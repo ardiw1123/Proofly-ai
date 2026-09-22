@@ -22,16 +22,33 @@ export interface Certificate {
   tokenURI: string;
 }
 
-export interface AssessmentQuestion {
+export type ProblemDifficulty = 'basic' | 'intermediate' | 'advanced';
+
+/** One of the three problems inside a generated case study. */
+export interface AssessmentProblem {
+  id: number;
+  title: string;
+  difficulty: ProblemDifficulty;
+  problemStatement: string;
+  evaluationCriteria: string[];
+}
+
+/**
+ * A dynamically generated assessment: one business case study split into
+ * exactly three progressive problems, unique per session.
+ */
+export interface AssessmentCase {
   sessionId: string;
   skillId: number;
   skillName: string;
   scenarioTitle: string;
   businessContext: string;
   schema: string;
-  challenge: string;
-  evaluationCriteria: string[];
+  problems: AssessmentProblem[];
 }
+
+/** @deprecated Use {@link AssessmentCase} — kept so older imports keep working. */
+export type AssessmentQuestion = AssessmentCase;
 
 export interface RubricBreakdown {
   logic: number;
@@ -40,9 +57,37 @@ export interface RubricBreakdown {
   syntax: number;
 }
 
+/** Maximum score per rubric dimension. Weights total 100. */
+export const RUBRIC_MAX: Record<keyof RubricBreakdown, number> = {
+  logic: 40,
+  efficiency: 25,
+  edgeCases: 20,
+  syntax: 15,
+};
+
+export const RUBRIC_LABELS: Record<keyof RubricBreakdown, string> = {
+  logic: 'Logic & correctness',
+  efficiency: 'Efficiency & performance',
+  edgeCases: 'Edge case handling',
+  syntax: 'Syntax & conventions',
+};
+
+/** A submission must reach this score to be considered passing. */
+export const PASSING_SCORE = 80;
+
+export interface ProblemVerdict {
+  problemId: number;
+  score: number;
+  verdict: string;
+}
+
 export interface EvaluationFeedback {
   summary: string;
   breakdown: RubricBreakdown;
+  strengths: string;
+  areasForImprovement: string;
+  detailedFeedback: string;
+  perProblem: ProblemVerdict[];
 }
 
 export interface MintAuthorization {
@@ -60,6 +105,12 @@ export interface EvaluationResult {
   feedback: EvaluationFeedback;
   mintAuthorization?: MintAuthorization;
   cooldownUntil?: number;
+}
+
+/** Request payload for POST /api/assessment/evaluate. */
+export interface AssessmentAnswer {
+  problemId: number;
+  answer: string;
 }
 
 export const SKILL_TRACKS: SkillTrack[] = [
@@ -85,3 +136,7 @@ export const SKILL_TRACKS: SkillTrack[] = [
     tags: ["Solidity", "Web3", "EVM"],
   },
 ];
+
+export function getSkillTrack(skillId: number): SkillTrack | undefined {
+  return SKILL_TRACKS.find((track) => track.id === skillId);
+}
