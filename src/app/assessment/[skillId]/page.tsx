@@ -11,8 +11,10 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Wallet,
 } from 'lucide-react';
 import { useAccount } from 'wagmi';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 import { CodeEditor } from '@/components/CodeEditor';
 import { EvaluationPanel } from '@/components/EvaluationPanel';
@@ -24,9 +26,6 @@ import {
   type EvaluationResult,
   type ProblemDifficulty,
 } from '@/types';
-
-/** Used when no wallet is connected so the assessment can still be tried out. */
-const GUEST_WALLET = '0x0000000000000000000000000000000000000000';
 
 const DIFFICULTY_STYLES: Record<ProblemDifficulty, string> = {
   basic: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
@@ -44,8 +43,8 @@ export default function AssessmentStudioPage({
   const skill = getSkillTrack(skillId);
   const isValidSkill = Boolean(skill);
 
-  const { address } = useAccount();
-  const walletAddress = address ?? GUEST_WALLET;
+  const { address, isConnected } = useAccount();
+  const walletAddress = address;
 
   const assessment = useAssessmentStore((state) => state.assessment);
   const answers = useAssessmentStore((state) => state.answers);
@@ -68,6 +67,10 @@ export default function AssessmentStudioPage({
   const isBusy = phase === 'loading' || phase === 'evaluating';
 
   const generate = useCallback(async () => {
+    if (!walletAddress) {
+      return;
+    }
+
     setLoading();
 
     try {
@@ -98,7 +101,7 @@ export default function AssessmentStudioPage({
 
   // Generate exactly once per (track, wallet) pair, unless a draft already exists.
   useEffect(() => {
-    if (!isValidSkill || hasCaseForThisTrack) {
+    if (!isValidSkill || hasCaseForThisTrack || !walletAddress) {
       return;
     }
 
@@ -113,7 +116,7 @@ export default function AssessmentStudioPage({
   }, [isValidSkill, hasCaseForThisTrack, skillId, walletAddress, generate]);
 
   const submit = useCallback(async () => {
-    if (!assessment) {
+    if (!assessment || !walletAddress) {
       return;
     }
 
@@ -168,6 +171,10 @@ export default function AssessmentStudioPage({
     requestKeyRef.current = null;
     void generate();
   }, [reset, generate]);
+
+  if (!isConnected || !walletAddress) {
+    return <ConnectWalletGate />;
+  }
 
   if (!isValidSkill || !skill) {
     return (
@@ -388,6 +395,33 @@ function LoadingState({
       <p className="mt-2 text-sm text-zinc-500">
         Generating three unique problems for this session.
       </p>
+    </div>
+  );
+}
+
+function ConnectWalletGate() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center px-6 py-24">
+      <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-8 text-center">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-500/30 bg-blue-500/10">
+          <Wallet className="h-7 w-7 text-blue-400" />
+        </span>
+        <h1 className="mt-6 text-2xl font-bold text-white">Connect wallet to continue</h1>
+        <p className="mt-3 text-sm leading-6 text-zinc-400">
+          Connect your wallet to start this assessment. Your attempt will be tied to your
+          wallet and a passing grade earns a permanent Soulbound Certificate.
+        </p>
+        <div className="mt-8">
+          <ConnectButton />
+        </div>
+        <Link
+          href="/"
+          className="mt-6 inline-flex items-center gap-2 text-sm text-zinc-500 transition-colors hover:text-blue-400"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to assessments
+        </Link>
+      </div>
     </div>
   );
 }

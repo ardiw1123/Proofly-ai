@@ -44,13 +44,29 @@ export default function Home() {
         </div>
 
         <h2 className="mt-6 text-3xl font-bold tracking-tighter text-white sm:text-5xl">
-          Pick a track. Get scored. Mint your proof.
+          Prove your skills. On chain.
         </h2>
 
-        <p className="mx-auto mt-4 max-w-2xl text-lg text-neutral-400 sm:text-xl">
-          Pick a track, solve an AI-generated case study, and get scored by an independent
-          Technical Lead. No two candidates get the same exam.
+        <p className="mt-4 text-lg text-neutral-300 sm:text-xl max-w-2xl mx-auto">
+          AI-generated case studies, independently evaluated by an on-chain Technical Lead.
+          Pass with 80+ and earn a permanent Soulbound Certificate.
         </p>
+
+        <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+          <Link
+            href="/assessment/1"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 font-medium text-white transition-all hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.45)]"
+          >
+            Connect wallet to start
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            href="/assessment/2"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-zinc-800 px-6 py-3.5 font-medium text-white transition-all hover:bg-zinc-600"
+          >
+            Browse tracks
+          </Link>
+        </div>
       </section>
 
       <section className="mt-12">
