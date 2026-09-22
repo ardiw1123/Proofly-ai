@@ -1,126 +1,124 @@
-import Image from "next/image";
-import { ArrowRight, Award, Code, Database, Cpu } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Award, Code, Cpu, Database, Sparkles, Target } from "lucide-react";
 
-const SKILLS = [
+import { SKILL_TRACKS } from "@/types";
+
+const SKILL_ICONS: Record<number, React.ReactNode> = {
+  1: <Database className="h-7 w-7 text-blue-400" />,
+  2: <Code className="h-7 w-7 text-emerald-400" />,
+  3: <Cpu className="h-7 w-7 text-purple-400" />,
+};
+
+const SKILL_GRADIENTS: Record<number, string> = {
+  1: "from-blue-500 to-cyan-400",
+  2: "from-emerald-500 to-teal-400",
+  3: "from-purple-500 to-violet-400",
+};
+
+const HIGHLIGHTS = [
   {
-    id: 1,
-    title: "SQL for Data Analytics",
-    description: "E-commerce transactional analytics, aggregation queries, window functions, CTEs, and performance optimization.",
-    icon: <Database className="w-8 h-8 text-blue-500" />,
-    color: "from-blue-500 to-cyan-400",
-    image: "/file.svg"
+    icon: <Sparkles className="h-5 w-5 text-blue-400" />,
+    title: "Dynamic case studies",
+    description: "GPT-4o invents a fresh business scenario with three progressive problems per session.",
   },
   {
-    id: 2,
-    title: "Python for Data Manipulation",
-    description: "Financial data cleansing with Pandas/Polars, feature engineering, outlier handling, and vectorized operations.",
-    icon: <Code className="w-8 h-8 text-emerald-500" />,
-    color: "from-emerald-500 to-teal-400",
-    image: "/file.svg"
+    icon: <Target className="h-5 w-5 text-emerald-400" />,
+    title: "Independent evaluation",
+    description: "An AI Technical Lead scores logic, efficiency, edge cases, and syntax out of 100.",
   },
   {
-    id: 3,
-    title: "Solidity & Smart Contracts",
-    description: "DeFi and tokenized state management, reentrancy prevention, access control, gas optimization, and storage patterns.",
-    icon: <Cpu className="w-8 h-8 text-purple-500" />,
-    color: "from-purple-500 to-violet-400",
-    image: "/file.svg"
-  }
+    icon: <Award className="h-5 w-5 text-purple-400" />,
+    title: "Soulbound proof",
+    description: "Pass with 80 or higher and the result becomes a permanent on-chain credential.",
+  },
 ];
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-black text-white">
-      {/* Navbar */}
-      <nav className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-lg sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-2xl flex items-center justify-center">
-              <Award className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <span className="font-bold text-2xl tracking-tighter">ProofOfSkill</span>
-              <span className="text-xs text-zinc-500 block -mt-1">BOT Chain</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-8 text-sm">
-            <a href="#" className="hover:text-blue-400 transition-colors">Assessments</a>
-            <a href="#" className="hover:text-blue-400 transition-colors">My Badges</a>
-            <a href="#" className="hover:text-blue-400 transition-colors">Verify</a>
-          </div>
-
-          <button className="flex items-center gap-2 bg-white text-black px-6 py-2.5 rounded-2xl font-medium hover:scale-105 active:scale-95 transition-all">
-            Connect Wallet
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto px-6 py-12">
-        {/* Hero */}
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 bg-zinc-900 text-blue-400 text-sm px-4 py-1.5 rounded-3xl mb-6">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            Testnet Live • 1 BOT Fee
-          </div>
-          
-          <h1 className="text-6xl font-bold tracking-tighter mb-4">
-            Prove Your Skills.<br />On Chain.
-          </h1>
-          <p className="text-2xl text-zinc-400 max-w-2xl mx-auto">
-            AI-generated technical challenges. Soulbound badges. Permanent proof of competence.
-          </p>
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+      <section className="text-center">
+        <div className="inline-flex items-center gap-2 rounded-3xl border border-zinc-800 bg-zinc-900 px-4 py-1.5 text-sm text-blue-400">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+          AI-evaluated · 3 problems per session
         </div>
 
-        {/* Skills Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {SKILLS.map((skill) => (
-            <div key={skill.id} className="group bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 hover:border-blue-500/50 transition-all duration-300 hover:-translate-y-1">
-              <div className={`h-2 bg-gradient-to-r ${skill.color}`} />
-              
-              <div className="p-8">
-                <div className="flex items-start justify-between mb-6">
-                  <div className="w-14 h-14 rounded-2xl bg-zinc-800 flex items-center justify-center">
-                    {skill.icon}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs uppercase tracking-widest text-zinc-500">Skill Track</div>
-                    <div className="text-4xl font-mono font-bold text-white mt-1">#{skill.id}</div>
-                  </div>
+        <h1 className="mt-6 text-4xl font-bold tracking-tighter text-white sm:text-6xl">
+          Prove your skills.
+          <br />
+          On chain.
+        </h1>
+
+        <p className="mx-auto mt-4 max-w-2xl text-lg text-zinc-400 sm:text-xl">
+          Pick a track, solve an AI-generated case study, and get scored by an independent
+          Technical Lead. No two candidates get the same exam.
+        </p>
+      </section>
+
+      <section className="mt-14 grid gap-6 sm:grid-cols-3">
+        {HIGHLIGHTS.map((item) => (
+          <div key={item.title} className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-950">
+              {item.icon}
+            </span>
+            <h2 className="mt-4 font-semibold text-white">{item.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">{item.description}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="mt-16">
+        <h2 className="text-xs uppercase tracking-widest text-zinc-500">Choose your track</h2>
+
+        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {SKILL_TRACKS.map((track) => (
+            <div
+              key={track.id}
+              className="group flex flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900 transition-all duration-300 hover:-translate-y-1 hover:border-blue-500/50"
+            >
+              <div className={`h-1.5 bg-gradient-to-r ${SKILL_GRADIENTS[track.id]}`} />
+
+              <div className="flex flex-1 flex-col p-6">
+                <div className="flex items-start justify-between">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-950">
+                    {SKILL_ICONS[track.id]}
+                  </span>
+                  <span className="font-mono text-3xl font-bold text-zinc-700">
+                    #{track.id}
+                  </span>
                 </div>
 
-                <h3 className="text-2xl font-semibold mb-2">{skill.title}</h3>
-                <p className="text-zinc-400 mb-8">{skill.description}</p>
+                <h3 className="mt-5 text-xl font-semibold text-white">{track.name}</h3>
+                <p className="mt-2 flex-1 text-sm leading-6 text-zinc-400">
+                  {track.description}
+                </p>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm text-emerald-400 font-medium">Status</div>
-                    <div className="text-3xl font-semibold text-white">Locked</div>
-                  </div>
-                  
-                  <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 transition-colors px-8 py-4 rounded-2xl font-medium group-hover:scale-105 active:scale-95">
-                    Start Assessment
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {track.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full border border-zinc-800 px-2.5 py-0.5 text-[11px] text-zinc-500"
+                    >
+                      {tag}
+                    </span>
+                  ))}
                 </div>
+
+                <Link
+                  href={`/assessment/${track.id}`}
+                  className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 font-medium text-white transition-all hover:bg-blue-500 group-hover:gap-3"
+                >
+                  Start assessment
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
               </div>
             </div>
           ))}
         </div>
+      </section>
 
-        {/* Footer note */}
-        <div className="text-center mt-16 text-zinc-500 text-sm">
-          All assessments cost 1 BOT token • 24h cooldown between attempts
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-zinc-800 py-8 mt-20">
-        <div className="max-w-7xl mx-auto px-6 text-center text-zinc-500 text-sm">
-          Powered by BOT Chain Ecosystem • Made for Hackathon 2026
-        </div>
-      </footer>
+      <p className="mt-14 text-center text-sm text-zinc-500">
+        Three problems per session · Scored 0-100 · Passing grade 80
+      </p>
     </div>
   );
 }
