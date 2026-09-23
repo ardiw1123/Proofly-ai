@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, Award } from "lucide-react";
 
 export const metadata = {
-  title: "My Badges — ProofOfSkill",
+  title: "My Badges",
 };
 
 export default function BadgesPage() {

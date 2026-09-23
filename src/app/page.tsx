@@ -20,7 +20,7 @@ const HIGHLIGHTS = [
   {
     icon: <Sparkles className="h-5 w-5 text-blue-400" />,
     title: "Dynamic case studies",
-    description: "GPT-4o invents a fresh business scenario with three progressive problems per session.",
+    description: "GPT Model invents a fresh business scenario with three progressive problems per session.",
   },
   {
     icon: <Target className="h-5 w-5 text-emerald-400" />,
@@ -39,7 +39,7 @@ export default function Home() {
     <BlackHoleScene title="Prove your skills. On chain.">
       <section className="text-center">
         <h2 className="text-3xl font-bold tracking-tighter text-white sm:text-5xl">
-          Prove your skills. On chain.
+          The First On-Chain Assessment Platform
         </h2>
 
         <p className="mt-4 text-lg text-neutral-300 sm:text-xl max-w-2xl mx-auto">
