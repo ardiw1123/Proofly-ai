@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const parsed = generateRequestSchema.safeParse(body);
 
   if (!parsed.success) {
-    return jsonError('Input tidak valid.', 400, parsed.error.flatten());
+    return jsonError('Invalid input.', 400, parsed.error.flatten());
   }
 
   const { walletAddress, skillId } = parsed.data;
@@ -43,10 +43,10 @@ export async function POST(request: Request) {
     const remainingMinutes = Math.ceil(cooldown.remainingMs / 60_000);
     const hours = Math.floor(remainingMinutes / 60);
     const minutes = remainingMinutes % 60;
-    const remainingLabel = hours > 0 ? `${hours} jam ${minutes} menit` : `${minutes} menit`;
+    const remainingLabel = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
     return jsonError(
-      `Kamu sudah mengerjakan assessment. Kembali lagi dalam ${remainingLabel}.`,
+      `You have already completed an assessment. Please return in ${remainingLabel}.`,
       429,
       { cooldownUntil: cooldown.cooldownUntil, remainingMs: cooldown.remainingMs },
       { 'Retry-After': String(Math.ceil(cooldown.remainingMs / 1000)) },
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
   if (!isAiConfigured()) {
     return jsonError(
-      'OPENAI_API_KEY belum diset di server. Tambahkan ke .env.local lalu restart dev server.',
+      'OPENAI_API_KEY is not configured on the server. Add it to .env.local and restart the dev server.',
       503,
     );
   }

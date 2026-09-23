@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useSyncExternalStore, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -15,11 +15,12 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useAccount } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 import { CodeEditor } from '@/components/CodeEditor';
 import { EvaluationPanel } from '@/components/EvaluationPanel';
+import { WalletControl } from '@/components/WalletControl';
 import { useAssessmentStore } from '@/stores/assessmentStore';
+import { useHydrated } from '@/lib/use-hydrated';
 import {
   getSkillTrack,
   type AssessmentAnswer,
@@ -40,11 +41,12 @@ interface CooldownInfo {
 }
 
 function formatRemaining(ms: number): string {
-  const totalMinutes = Math.max(0, Math.ceil(ms / 60_000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  return hours > 0 ? `${hours} jam ${minutes} menit` : `${minutes} menit`;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
 }
 
 export default function AssessmentStudioPage({
@@ -75,6 +77,7 @@ export default function AssessmentStudioPage({
   const reset = useAssessmentStore((state) => state.reset);
 
   const requestKeyRef = useRef<string | null>(null);
+  const mounted = useHydrated();
   const [cooldown, setCooldown] = useState<CooldownInfo | null>(null);
 
   const hasCaseForThisTrack = assessment?.skillId === skillId;
@@ -96,27 +99,33 @@ export default function AssessmentStudioPage({
       });
 
       const data = (await response.json().catch(() => null)) as
-        | (AssessmentCase & { error?: string; cooldownUntil?: number })
+        | (AssessmentCase & {
+            error?: string;
+            details?: { cooldownUntil?: number; remainingMs?: number };
+          })
         | null;
 
       // 429: the wallet already used its daily attempt. Surface the remaining
       // wait instead of a generic error.
       if (response.status === 429) {
-        const cooldownUntil =
-          data?.cooldownUntil ?? Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+        const cooldownUntil = data?.details?.cooldownUntil;
 
-        setCooldown({ cooldownUntil });
+        if (typeof cooldownUntil === 'number' && Number.isFinite(cooldownUntil)) {
+          setCooldown({ cooldownUntil });
+        } else {
+          setError(data?.error ?? 'A cooldown is active, but its expiration time is unavailable.');
+        }
         return;
       }
 
       if (!response.ok) {
-        throw new Error(data?.error ?? `Gagal membuat soal (HTTP ${response.status}).`);
+        throw new Error(data?.error ?? `Failed to generate the case study (HTTP ${response.status}).`);
       }
 
       setCooldown(null);
       setAssessment(data as AssessmentCase);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Terjadi kesalahan tak terduga.');
+      setError(cause instanceof Error ? cause.message : 'An unexpected error occurred.');
     }
   }, [walletAddress, skillId, setLoading, setAssessment, setError]);
 
@@ -152,7 +161,7 @@ export default function AssessmentStudioPage({
     }));
 
     if (payload.every((entry) => entry.answer.trim().length === 0)) {
-      setError('Isi minimal satu jawaban sebelum submit ke AI.');
+      setError('Enter at least one answer before submitting for AI review.');
       return;
     }
 
@@ -175,12 +184,12 @@ export default function AssessmentStudioPage({
         | null;
 
       if (!response.ok) {
-        throw new Error(data?.error ?? `Gagal mengevaluasi jawaban (HTTP ${response.status}).`);
+        throw new Error(data?.error ?? `Failed to evaluate the answers (HTTP ${response.status}).`);
       }
 
       setResult(data as EvaluationResult);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Terjadi kesalahan tak terduga.');
+      setError(cause instanceof Error ? cause.message : 'An unexpected error occurred.');
     }
   }, [
     assessment,
@@ -197,6 +206,10 @@ export default function AssessmentStudioPage({
     requestKeyRef.current = null;
     void generate();
   }, [reset, generate]);
+
+  if (!mounted) {
+    return <div className="min-h-screen" aria-hidden="true" />;
+  }
 
   if (!isConnected || !walletAddress) {
     return <ConnectWalletGate />;
@@ -265,7 +278,7 @@ export default function AssessmentStudioPage({
       )}
 
       {cooldown && !assessment ? (
-        <CooldownState cooldown={cooldown} onRetry={retryGenerate} />
+        <CooldownState cooldown={cooldown} />
       ) : !assessment ? (
         <LoadingState phase={phase} onRetry={retryGenerate} />
       ) : (
@@ -391,36 +404,36 @@ export default function AssessmentStudioPage({
 
 function CooldownState({
   cooldown,
-  onRetry,
 }: {
   cooldown: CooldownInfo;
-  onRetry: () => void;
 }) {
-  const [now, setNow] = useState(() => Date.now());
+  const now = useSyncExternalStore(
+    (notify) => {
+      const id = window.setInterval(notify, 1_000);
+      return () => window.clearInterval(id);
+    },
+    () => Date.now(),
+    () => 0,
+  );
+
+  const remainingMs = Math.max(0, cooldown.cooldownUntil * 1000 - (now ?? 0));
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const remainingMs = Math.max(0, cooldown.cooldownUntil * 1000 - now);
+    if (remainingMs === 0) {
+      window.location.reload();
+    }
+  }, [remainingMs]);
 
   return (
     <div className="mt-10 flex flex-col items-center rounded-3xl border border-amber-500/30 bg-amber-500/5 px-6 py-16 text-center">
       <Clock className="h-8 w-8 text-amber-400" />
-      <h2 className="mt-4 text-xl font-semibold text-white">Assessment belum tersedia</h2>
+      <h2 className="mt-4 text-xl font-semibold text-white">Assessment unavailable</h2>
       <p className="mt-3 max-w-md text-sm leading-6 text-zinc-300">
-        Kamu sudah mengerjakan assessment. Kembali lagi dalam{' '}
-        <span className="font-medium text-amber-300">{formatRemaining(remainingMs)}</span>.
+        You have already completed an assessment. Please return in{' '}
+        <span className="font-medium text-amber-300">
+          {now === 0 ? '--:--:--' : formatRemaining(remainingMs)}
+        </span>.
       </p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-amber-500/40 px-6 py-3 font-medium text-amber-200 transition-colors hover:bg-amber-500/10"
-      >
-        <RefreshCw className="h-4 w-4" />
-        Cek lagi
-      </button>
       <Link
         href="/"
         className="mt-4 inline-flex items-center gap-2 text-sm text-zinc-500 transition-colors hover:text-blue-400"
@@ -483,7 +496,7 @@ function ConnectWalletGate() {
           wallet and a passing grade earns a permanent Soulbound Certificate.
         </p>
         <div className="mt-8">
-          <ConnectButton />
+          <WalletControl />
         </div>
         <Link
           href="/"

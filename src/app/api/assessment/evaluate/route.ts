@@ -27,12 +27,12 @@ export async function POST(request: Request) {
   const parsed = evaluateRequestSchema.safeParse(body);
 
   if (!parsed.success) {
-    return jsonError('Input tidak valid.', 400, parsed.error.flatten());
+    return jsonError('Invalid input.', 400, parsed.error.flatten());
   }
 
   if (!isAiConfigured()) {
     return jsonError(
-      'OPENAI_API_KEY belum diset di server. Tambahkan ke .env.local lalu restart dev server.',
+      'OPENAI_API_KEY is not configured on the server. Add it to .env.local and restart the dev server.',
       503,
     );
   }
@@ -42,21 +42,21 @@ export async function POST(request: Request) {
 
   if (!session) {
     return jsonError(
-      'Sesi tidak ditemukan atau sudah kedaluwarsa. Silakan generate soal baru.',
+      'Session not found or expired. Please generate a new assessment.',
       404,
     );
   }
 
   if (session.consumed) {
-    return jsonError('Sesi ini sudah dievaluasi. Silakan generate soal baru.', 409);
+    return jsonError('This session has already been evaluated. Please generate a new assessment.', 409);
   }
 
   if (session.assessment.skillId !== skillId) {
-    return jsonError('Sesi ini tidak cocok dengan skill track yang diminta.', 400);
+    return jsonError('This session does not match the requested skill track.', 400);
   }
 
   if (session.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-    return jsonError('Sesi ini milik wallet lain.', 403);
+    return jsonError('This session belongs to a different wallet.', 403);
   }
 
   const answersByProblem = new Map(answers.map((entry) => [entry.problemId, entry.answer]));
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   }));
 
   if (orderedAnswers.every((entry) => entry.answer.trim().length === 0)) {
-    return jsonError('Tidak ada jawaban yang dikirim. Isi minimal satu soal sebelum submit.', 400);
+    return jsonError('No answers were submitted. Answer at least one problem before submitting.', 400);
   }
 
   let evaluation: GeneratedEvaluation;

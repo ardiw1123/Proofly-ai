@@ -187,7 +187,7 @@ export function BlackHoleScene({
 
             {/* Main content overlapping the bottom of the hero, so it reads as one screen */}
             {children && (
-                <div className="relative z-10 mx-auto -mt-24 w-full max-w-7xl px-4 pb-16 sm:px-6 md:-mt-32">
+                <div className="relative z-10 mx-auto -mt-16 w-full max-w-7xl px-4 pb-16 sm:px-6 md:-mt-24">
                     {children}
                 </div>
             )}
