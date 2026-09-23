@@ -38,12 +38,7 @@ export default function Home() {
   return (
     <BlackHoleScene title="Prove your skills. On chain.">
       <section className="text-center">
-        <div className="inline-flex items-center gap-2 rounded-3xl border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-blue-400 backdrop-blur-sm">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-          AI-evaluated · 3 problems per session
-        </div>
-
-        <h2 className="mt-6 text-3xl font-bold tracking-tighter text-white sm:text-5xl">
+        <h2 className="text-3xl font-bold tracking-tighter text-white sm:text-5xl">
           Prove your skills. On chain.
         </h2>
 

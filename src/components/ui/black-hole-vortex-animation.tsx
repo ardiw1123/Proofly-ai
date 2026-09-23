@@ -1,7 +1,14 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+
+/**
+ * The original effect animated 150 infinite paths, which kept the main thread
+ * busy enough to delay the wallet modal by seconds. A smaller field looks just
+ * as good and leaves the UI responsive.
+ */
+const PATH_COUNT = 40;
 
 function generatePaths(seed: number) {
   const random = (() => {
@@ -12,7 +19,14 @@ function generatePaths(seed: number) {
     };
   })();
 
-  return Array.from({ length: 150 }, (_, i) => {
+  // Trigonometry (`Math.cos`/`Math.sin`) is not bit-for-bit identical across
+  // JS engines, so the server (Node/V8) and the client (Chrome/V8) can disagree
+  // on the last float digit — which React reports as a hydration mismatch on
+  // the SVG `d` attribute. Rounding every coordinate to a fixed precision makes
+  // the rendered string deterministic everywhere.
+  const coordinate = (value: number) => value.toFixed(2);
+
+  return Array.from({ length: PATH_COUNT }, (_, i) => {
     const startAngle = random() * Math.PI * 2;
     const startRadius = 250 + random() * 250;
 
@@ -35,7 +49,7 @@ function generatePaths(seed: number) {
 
     return {
       id: i,
-      d: `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`,
+      d: `M ${coordinate(startX)} ${coordinate(startY)} C ${coordinate(cp1x)} ${coordinate(cp1y)}, ${coordinate(cp2x)} ${coordinate(cp2y)}, ${coordinate(endX)} ${coordinate(endY)}`,
       width: 0.25 + random() * 0.5,
       opacity: 0.1 + random() * 0.4,
       duration: 6 + random() * 8,
@@ -44,15 +58,26 @@ function generatePaths(seed: number) {
   });
 }
 
-function BlackHoleEffect() {
-  const paths = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return generatePaths(12345);
-    }
-    return generatePaths(12345);
+/** Stops the infinite animation whenever the tab is hidden. */
+function useDocumentVisible() {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState !== 'hidden');
+
+    update();
+    document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
   }, []);
 
-    return (
+  return visible;
+}
+
+function BlackHoleEffect() {
+  const paths = useMemo(() => generatePaths(12345), []);
+  const isVisible = useDocumentVisible();
+
+  return (
         <div className="absolute inset-0 pointer-events-none">
             <svg
                 className="w-full h-full text-slate-200" // Lighter color for particles on black bg
@@ -76,26 +101,27 @@ function BlackHoleEffect() {
                 <circle cx="348" cy="158" r="5" fill="black" />
 
                 {/* Animated paths being pulled into the black hole */}
-                {paths?.map((path) => (
-                    <motion.path
-                        key={path.id}
-                        d={path.d}
-                        stroke="currentColor"
-                        strokeWidth={path.width}
-                        strokeOpacity={path.opacity}
-                        initial={{ pathLength: 0, opacity: 0 }}
-                        animate={{
-                            pathLength: 1,
-                            opacity: [0, 1, 0], // Fade in, then fade out as it reaches the center
-                        }}
-                        transition={{
-                            duration: path.duration,
-                            repeat: Number.POSITIVE_INFINITY,
-                            ease: "linear",
-                            delay: path.delay,
-                        }}
-                    />
-                ))}
+                {isVisible &&
+                    paths.map((path) => (
+                        <motion.path
+                            key={path.id}
+                            d={path.d}
+                            stroke="currentColor"
+                            strokeWidth={path.width}
+                            strokeOpacity={path.opacity}
+                            initial={{ pathLength: 0, opacity: 0 }}
+                            animate={{
+                                pathLength: 1,
+                                opacity: [0, 1, 0], // Fade in, then fade out as it reaches the center
+                            }}
+                            transition={{
+                                duration: path.duration,
+                                repeat: Number.POSITIVE_INFINITY,
+                                ease: "linear",
+                                delay: path.delay,
+                            }}
+                        />
+                    ))}
             </svg>
         </div>
     );
