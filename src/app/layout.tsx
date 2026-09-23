@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ProofOfSkill — Decentralized AI Skill Verification",
+  title: "ProofOfSkill a Decentralized AI Skill Verification",
   description:
     "AI-generated case study assessments with independent Technical Lead evaluation, verified on BOT Chain.",
 };

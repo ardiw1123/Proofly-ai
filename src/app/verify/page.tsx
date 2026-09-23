@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 
 export const metadata = {
-  title: "Verify Profile — ProofOfSkill",
+  title: "Verify Profile ",
 };
 
 export default function VerifyPage() {

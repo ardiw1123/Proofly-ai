@@ -1,74 +1,96 @@
-# Issue: Hero Copywriting, Tombol Connect Wallet, dan Gating Assessment
+# Issue: Limit Assessment 24 Jam, Hapus Badge Hero, Fix Hydration Error, dan Percepat Connect Wallet
 
 ## Ringkasan
 
-Tiga penyempurnaan pada pengalaman pengguna sebelum mengerjakan assessment:
+Empat perbaikan pada aplikasi:
 
-1. **Hero copywriting** yang menarik perhatian di section hero (sebelum scroll).
-2. **Tombol Connect Wallet** di navbar kanan atas yang langsung membuka wallet yang sudah terpasang di browser (MetaMask / wallet lain).
-3. **Gating assessment**: user baru bisa mengakses dan mengerjakan soal **setelah** connect wallet. Saat ini siapa pun (tanpa wallet) masih bisa mengerjakan soal.
+1. **Limit akses assessment**: 1 wallet hanya bisa mengerjakan soal **1 kali dalam 24 jam**.
+2. **Hapus badge** "AI-evaluated · 3 problems per session" di halaman utama.
+3. **Fix error console Next.js**: `A tree hydrated but some attributes of the server rendered HTML didn't match the client properties` di halaman utama.
+4. **Percepat respons Connect Wallet**: tombol connect/disconnect wallet saat ini lambat merespons (terukur ~3,7 detik dari klik sampai modal muncul, bahkan di browser bersih tanpa ekstensi).
 
-Ini fitur product/UX — bukan bug. Kerjakan bertahap, jangan merombak total struktur yang sudah ada.
+Kerjakan berurutan per tahap. Semua akar masalah di bawah **sudah diinvestigasi** — langsung ke titiknya, jangan cari ulang dari nol.
 
 ---
 
-## Konteks Kondisi Saat Ini (baca dulu sebelum koding)
+## Konteks & Temuan Investigasi (baca dulu sebelum koding)
 
-- **Hero** (`src/app/page.tsx` + `src/components/ui/black-hole-vortex-animation.tsx`): judul hero saat ini di-render oleh `BlackHoleScene` lewat prop `title="Prove your skills. On chain."`, lalu ada badge dan sub-judul di bawahnya. Jadi kerangka hero **sudah ada** — tugasnya memperkuat copywriting, bukan membuat section baru.
-- **Navbar** (`src/components/Navbar.tsx`): **sudah** ada `<ConnectButton>` dari RainbowKit di kanan atas. RainbowKit otomatis mendeteksi wallet yang terpasang. Tugasnya memastikan tombol ini benar-benar mengarahkan user untuk connect ke wallet terpasang (bukan sekadar hiasan), dan tampilannya konsisten.
-- **Wallet provider** (`src/providers/Web3Provider.tsx`): sudah pakai Wagmi + RainbowKit + React Query. Hook `useAccount()` dari `wagmi` tersedia untuk cek status koneksi.
-- **Assessment** (`src/app/assessment/[skillId]/page.tsx`): saat ini memakai fallback `GUEST_WALLET = 0x000...000` ketika tidak ada wallet (`const walletAddress = address ?? GUEST_WALLET`), sehingga **guest tetap bisa generate dan mengerjakan soal**. Perilaku inilah yang harus dikunci.
-- **Prop komponen hero**: `BlackHoleScene` saat ini hanya menerima `title` dan `children`. Untuk menaruh sub-headline/CTA di dalam area hero (di sekitar judul), prop komponen ini perlu diperluas — atau konten tambahan ditempatkan lewat `children`. Pilih cara yang paling sederhana.
+### Item 1 — Limit 24 jam
+- Semua soal dibuat lewat API `src/app/api/assessment/generate/route.ts`; penilaian lewat `evaluate/route.ts`. **Enforcement WAJIB di sisi server** (API route) — kalau hanya di frontend, user bisa bypass lewat console/devtools.
+- Sudah ada store sesi server-side di `src/lib/assessment-store.ts` (Map di `globalThis`, menyimpan `walletAddress` + `createdAt`). **Tapi hati-hati**: sesi dihapus otomatis setelah `SESSION_TTL_MS` = 2 jam, jadi Map sesi TIDAK BISA dipakai langsung untuk limit 24 jam — perlu catatan attempt terpisah per wallet dengan TTL 24 jam.
+- Di `evaluate/route.ts` sudah ada konstanta `COOLDOWN_SECONDS = 24 jam` dan field `cooldownUntil` yang dikirim saat user gagal — tapi **tidak pernah di-enforce** saat generate berikutnya. Fitur ini menyambungkan logika yang sudah setengah jadi itu.
+- Saat ini halaman assessment sudah di-gating wallet (PR #10), jadi setiap request generate selalu membawa `walletAddress` asli — itu kunci limitnya.
 
-> **Baseline penting:** bug layout (#6) sudah diperbaiki dan merged (PR #7), jadi kerjakan dari kode terbaru. Namun integrasi hero di `src/app/page.tsx` (pemakaian `BlackHoleScene`, issue #5) **masih berupa perubahan lokal yang belum di-commit** — di branch `main`, `page.tsx` belum memakai komponen tersebut. Pastikan dulu status perubahan lokal ini jelas (di-commit atau disepakati sebagai baseline) sebelum menumpuk pekerjaan baru di atasnya.
+### Item 2 — Badge hero
+- Lokasinya di `src/app/page.tsx`: blok `<div className="inline-flex ...">` berisi dot hijau `animate-pulse` + teks "AI-evaluated · 3 problems per session" (sekitar baris 41–44).
+
+### Item 3 — Hydration error (akar masalah sudah ketemu)
+- Bersumber dari `src/components/ui/black-hole-vortex-animation.tsx`. Perbaikan sebelumnya (PRNG seeded) sudah membuat urutan angka deterministik, tapi error masih muncul karena masalah presisi floating-point:
+  ```
+  server: d="M 164.42798499891663 5.651054624392572 C ..."
+  client: d="M 164.42798499891663 5.6510546243926 C ..."
+  ```
+  Selisih hanya di digit terakhir. Penyebabnya: koordinat path dihitung dengan `Math.cos`/`Math.sin`, dan hasil fungsi trigonometri bisa berbeda 1 ULP antar versi V8 (Node di server vs Chrome di browser). `strokeWidth` (murni aritmetika PRNG) cocok persis — hanya koordinat hasil trigonometri yang melenceng.
+- **Arah fix**: bulatkan semua angka koordinat ke presisi tetap (mis. 2 desimal) saat merangkai string `d` — hasil pembulatan dijamin identik lintas engine. Jangan pakai `suppressHydrationWarning` (itu menutupi, bukan memperbaiki).
+
+### Item 4 — Connect wallet lambat
+- Terukur objektif: klik tombol "Connect Wallet" → modal tampil = **~3.700 ms** di browser headless bersih. Jadi lambatnya bukan (hanya) dari MetaMask — halaman sendiri yang berat.
+- Tersangka utama: **150 path SVG dianimasikan tanpa henti oleh framer-motion** (repeat infinity, animasi `pathLength` per path = kerja JS terus-menerus di main thread), sehingga klik dan render modal tersendat.
+- Konsekuensinya sama untuk disconnect (modal akun juga dibuka dari halaman yang sama).
 
 ---
 
 ## Tahapan Implementasi
 
-### Tahap 1 — Perkuat copywriting hero
-- Susun ulang copy di section hero agar punya daya tarik: headline utama yang kuat (mis. "Prove your skills. On chain."), sub-headline pendukung yang menjelaskan value (AI-generated case study, dinilai independen, bukti on-chain), dan idealnya satu **CTA** (ajakan bertindak) yang jelas, misalnya tombol "Connect wallet to start" atau "Start assessment".
-- Boleh menyesuaikan prop `title` pada `BlackHoleScene` dan/atau konten di `src/app/page.tsx` — tanpa mengubah struktur layout hero yang sudah menyatu dengan kartu track.
-- Jaga keterbacaan teks di atas efek animasi (kontras cukup).
+### Tahap 1 — Limit assessment 1x per 24 jam per wallet
+- Tambahkan pencatatan attempt per wallet di `src/lib/assessment-store.ts` (atau modul kecil terpisah): simpan kapan terakhir kali sebuah `walletAddress` memulai assessment, dengan umur data 24 jam. Ikuti pola Map-di-globalThis yang sudah ada (dengan komentar bahwa produksi sebaiknya pakai Redis/KV).
+- Enforce di `POST /api/assessment/generate`: jika wallet masih dalam masa cooldown, tolak dengan status HTTP yang tepat (mis. 429) dan sertakan **sisa waktu tunggu** dalam respons agar frontend bisa menampilkannya.
+- Frontend (`src/app/assessment/[skillId]/page.tsx`): tangani respons 429 dengan layar/pesan yang ramah — mis. "Kamu sudah mengerjakan assessment. Kembali lagi dalam X jam Y menit." Jangan biarkan muncul sebagai error generik.
+- Putuskan dan dokumentasikan di komentar: jam 24 dimulai saat **generate** (soal diambil) — pilihan paling sederhana dan menutup celah "generate berkali-kali cari soal gampang".
+- Samakan perilakunya dengan `cooldownUntil` yang sudah ada di evaluate route agar tidak ada dua mekanisme cooldown yang saling bertentangan.
 
-### Tahap 2 — Tombol Connect Wallet di navbar
-- Pastikan tombol connect di kanan atas navbar berfungsi dan langsung membuka/menghubungkan ke wallet yang terpasang di browser (MetaMask atau wallet lain yang terdeteksi). RainbowKit umumnya sudah menangani ini; jika perlu, arahkan agar wallet ter-install diprioritaskan/di-trigger langsung.
-- Ketika sudah terhubung, tampilkan alamat wallet (atau ringkasannya) — perilaku default RainbowKit sudah cukup.
-- Pastikan tampilan tombol rapi dan konsisten dengan tema gelap, di desktop maupun mobile.
+### Tahap 2 — Hapus badge hero
+- Hapus blok badge "AI-evaluated · 3 problems per session" dari `src/app/page.tsx`.
+- Rapikan spacing elemen di sekitar bekas badge (heading di bawahnya punya `mt-6` yang tadinya bergantung pada badge) agar hero tetap seimbang.
+- Jangan sentuh elemen hero lain.
 
-### Tahap 3 — Gating assessment berdasarkan koneksi wallet
-- Kunci halaman assessment (`src/app/assessment/[skillId]/page.tsx`): jika wallet **belum** terhubung (cek via `useAccount()`), jangan tampilkan/muat soal. Tampilkan layar "Connect wallet untuk melanjutkan" dengan tombol yang memicu connect (bisa memakai tombol/komponen connect yang sama seperti di navbar).
-- Hentikan alur guest: jangan memanggil generate soal untuk user tanpa wallet. Hilangkan/batasi pemakaian `GUEST_WALLET` agar tidak lagi memberi akses mengerjakan soal.
-- Setelah wallet terhubung, assessment berjalan normal seperti sekarang (generate soal → kerjakan → submit → evaluasi).
-- Pertimbangkan juga CTA "Start assessment" di halaman utama: boleh diarahkan agar mendorong connect wallet lebih dulu (opsional, selama tidak membingungkan).
+### Tahap 3 — Fix hydration error
+- Terapkan pembulatan presisi tetap pada koordinat di `black-hole-vortex-animation.tsx` sesuai temuan investigasi di atas.
+- Verifikasi: buka halaman utama dengan console browser — error hydration harus hilang total (bukan berkurang).
 
-### Tahap 4 — Verifikasi
-- Jalankan `npm run dev`, uji manual:
-  - Hero tampil dengan copy baru dan CTA sebelum scroll, tetap rapi dan terbaca.
-  - Tombol connect navbar membuka wallet terpasang; setelah connect, status wallet muncul.
-  - Akses `/assessment/1` **tanpa** wallet → muncul layar "connect wallet", soal tidak dimuat.
-  - Setelah **connect wallet** → soal bisa diakses dan dikerjakan sampai submit/evaluasi.
-  - Cek di mobile & desktop.
-- Pastikan tidak ada error hydration/console baru.
-- Jalankan `npm run lint` (dan typecheck bila ada) sampai lolos tanpa error baru.
+### Tahap 4 — Percepat connect/disconnect wallet
+- Ukur dulu baseline (klik → modal tampil) supaya ada pembanding sebelum/sesudah.
+- Kurangi beban main thread dari animasi black hole. Pilih pendekatan paling sederhana yang efektif, misalnya: kurangi jumlah path secara signifikan, dan/atau hentikan animasi saat tab tidak aktif / saat modal wallet terbuka. Pertahankan nuansa visual hero.
+- Ukur ulang setelah perubahan; target: modal connect terbuka < 1 detik di kondisi normal.
+- Jika masih lambat setelah animasi diringankan, cek konfigurasi wagmi/RainbowKit di `src/providers/Web3Provider.tsx` (mis. setup `ssr: true` tanpa cookie storage) — tapi kerjakan pengurangan animasi lebih dulu karena itu tersangka terkuat.
+
+### Tahap 5 — Verifikasi keseluruhan
+- `npm run dev`, uji manual:
+  - Wallet A generate soal → coba generate lagi (reload / track lain) → tertolak dengan pesan sisa waktu yang jelas.
+  - Badge di hero hilang, layout hero tetap rapi.
+  - Console browser bersih dari error hydration di semua halaman.
+  - Klik Connect Wallet → modal muncul cepat; disconnect juga responsif.
+  - Regresi: alur assessment normal (generate → kerjakan → submit → evaluasi) tetap jalan untuk attempt pertama.
+- `npm run lint` dan `npm run build` lolos tanpa error baru.
 
 ---
 
 ## Kriteria Selesai (Definition of Done)
 
-- [ ] Hero punya copywriting menarik (headline + sub-headline + CTA) yang tampil sebelum scroll.
-- [ ] Tombol Connect Wallet di navbar kanan atas berfungsi membuka wallet terpasang.
-- [ ] Assessment tidak bisa diakses/dikerjakan sebelum wallet terhubung; tampil prompt connect.
-- [ ] Setelah connect wallet, alur assessment berjalan normal end-to-end.
-- [ ] Responsif di mobile/tablet/desktop; tidak ada error hydration/console baru.
-- [ ] `npm run lint` lolos tanpa error baru.
+- [ ] Wallet yang sama tidak bisa generate soal kedua dalam 24 jam — ditolak **server-side** dengan pesan sisa waktu yang jelas di UI.
+- [ ] Badge "AI-evaluated · 3 problems per session" hilang dari halaman utama tanpa merusak layout hero.
+- [ ] Tidak ada error hydration di console pada halaman mana pun.
+- [ ] Modal connect wallet terbuka < 1 detik di kondisi normal; disconnect juga responsif.
+- [ ] Alur assessment existing tidak regress.
+- [ ] `npm run lint` dan `npm run build` lolos.
 
 ---
 
 ## Catatan untuk Implementer
 
-- **Jangan menambah dependency baru** kecuali benar-benar perlu — Wagmi + RainbowKit yang sudah ada umumnya cukup untuk connect wallet & cek status.
-- **Jangan merombak total** struktur halaman/komponen yang sudah ada; lakukan perubahan terfokus.
-- Prioritaskan konsistensi desain (tema gelap yang sudah dipakai) daripada efek rumit.
-- Reuse komponen connect yang sudah ada (RainbowKit) daripada membuat mekanisme wallet sendiri.
-- Kerjakan bertahap per Tahap; verifikasi tiap tahap sebelum lanjut.
+- **Jangan menambah dependency baru** — semua perbaikan bisa dilakukan dengan stack yang ada.
+- **Jangan melemahkan enforcement ke client-side saja** (mis. cuma menyimpan timestamp di localStorage) — itu gampang di-reset user dan tidak memenuhi requirement.
+- Jangan pakai `suppressHydrationWarning` untuk menyapu error hydration ke bawah karpet.
+- Perubahan diharapkan terfokus pada: `assessment-store.ts` (atau modul limit baru), `generate/route.ts`, `assessment/[skillId]/page.tsx`, `page.tsx`, `black-hole-vortex-animation.tsx`, dan bila perlu `Web3Provider.tsx`.
+- Store in-memory hilang saat server restart — untuk MVP ini diterima; tuliskan batasannya di komentar kode, jangan diam-diam.
+- Kerjakan bertahap per Tahap, verifikasi tiap tahap sebelum lanjut ke berikutnya.
