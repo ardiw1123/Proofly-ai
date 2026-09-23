@@ -7,16 +7,13 @@ import {
   evaluationValidator,
   PASSING_SCORE,
 } from '@/lib/ai-schemas';
-import { getSession, markSessionConsumed } from '@/lib/assessment-store';
+import { getAttemptCooldown, getSession, markSessionConsumed } from '@/lib/assessment-store';
 import { TEMPERATURE_EVALUATE, isAiConfigured } from '@/lib/openai';
 import { buildEvaluateSystemPrompt, buildEvaluateUserPrompt } from '@/lib/prompts';
 import { evaluateRequestSchema } from '@/lib/schemas';
 import type { EvaluationResult } from '@/types';
 
 export const runtime = 'nodejs';
-
-/** Failed attempts unlock again after 24 hours. */
-const COOLDOWN_SECONDS = 24 * 60 * 60;
 
 /**
  * POST /api/assessment/evaluate
@@ -99,6 +96,12 @@ export async function POST(request: Request) {
   // The pass/fail decision is derived server-side, never taken from the model.
   const passed = evaluation.score >= PASSING_SCORE;
 
+  // The 24h clock started when this case was generated, so we read it back from
+  // the shared attempt store rather than recomputing a deadline here. Keeping a
+  // single source of truth prevents the generate and evaluate cooldowns from
+  // disagreeing.
+  const cooldown = getAttemptCooldown(walletAddress);
+
   const result: EvaluationResult = {
     passed,
     score: evaluation.score,
@@ -111,7 +114,7 @@ export async function POST(request: Request) {
       detailedFeedback: evaluation.detailedFeedback,
       perProblem: evaluation.perProblem,
     },
-    ...(passed ? {} : { cooldownUntil: Math.floor(Date.now() / 1000) + COOLDOWN_SECONDS }),
+    ...(cooldown.active ? { cooldownUntil: cooldown.cooldownUntil } : {}),
   };
 
   return jsonOk(result);

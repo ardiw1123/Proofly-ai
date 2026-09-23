@@ -1,11 +1,12 @@
 'use client';
 
-import { use, useCallback, useEffect, useRef } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
+  Clock,
   Database,
   Loader2,
   RefreshCw,
@@ -32,6 +33,19 @@ const DIFFICULTY_STYLES: Record<ProblemDifficulty, string> = {
   intermediate: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
   advanced: 'border-red-500/30 bg-red-500/10 text-red-400',
 };
+
+interface CooldownInfo {
+  /** Unix timestamp (seconds) when the wallet may generate a new case again. */
+  cooldownUntil: number;
+}
+
+function formatRemaining(ms: number): string {
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return hours > 0 ? `${hours} jam ${minutes} menit` : `${minutes} menit`;
+}
 
 export default function AssessmentStudioPage({
   params,
@@ -61,6 +75,7 @@ export default function AssessmentStudioPage({
   const reset = useAssessmentStore((state) => state.reset);
 
   const requestKeyRef = useRef<string | null>(null);
+  const [cooldown, setCooldown] = useState<CooldownInfo | null>(null);
 
   const hasCaseForThisTrack = assessment?.skillId === skillId;
   const hasResult = Boolean(result);
@@ -81,13 +96,24 @@ export default function AssessmentStudioPage({
       });
 
       const data = (await response.json().catch(() => null)) as
-        | (AssessmentCase & { error?: string })
+        | (AssessmentCase & { error?: string; cooldownUntil?: number })
         | null;
+
+      // 429: the wallet already used its daily attempt. Surface the remaining
+      // wait instead of a generic error.
+      if (response.status === 429) {
+        const cooldownUntil =
+          data?.cooldownUntil ?? Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+
+        setCooldown({ cooldownUntil });
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(data?.error ?? `Gagal membuat soal (HTTP ${response.status}).`);
       }
 
+      setCooldown(null);
       setAssessment(data as AssessmentCase);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Terjadi kesalahan tak terduga.');
@@ -238,7 +264,9 @@ export default function AssessmentStudioPage({
         </div>
       )}
 
-      {!assessment ? (
+      {cooldown && !assessment ? (
+        <CooldownState cooldown={cooldown} onRetry={retryGenerate} />
+      ) : !assessment ? (
         <LoadingState phase={phase} onRetry={retryGenerate} />
       ) : (
         <div className="mt-8 grid gap-6 lg:grid-cols-2">
@@ -357,6 +385,49 @@ export default function AssessmentStudioPage({
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+function CooldownState({
+  cooldown,
+  onRetry,
+}: {
+  cooldown: CooldownInfo;
+  onRetry: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const remainingMs = Math.max(0, cooldown.cooldownUntil * 1000 - now);
+
+  return (
+    <div className="mt-10 flex flex-col items-center rounded-3xl border border-amber-500/30 bg-amber-500/5 px-6 py-16 text-center">
+      <Clock className="h-8 w-8 text-amber-400" />
+      <h2 className="mt-4 text-xl font-semibold text-white">Assessment belum tersedia</h2>
+      <p className="mt-3 max-w-md text-sm leading-6 text-zinc-300">
+        Kamu sudah mengerjakan assessment. Kembali lagi dalam{' '}
+        <span className="font-medium text-amber-300">{formatRemaining(remainingMs)}</span>.
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-amber-500/40 px-6 py-3 font-medium text-amber-200 transition-colors hover:bg-amber-500/10"
+      >
+        <RefreshCw className="h-4 w-4" />
+        Cek lagi
+      </button>
+      <Link
+        href="/"
+        className="mt-4 inline-flex items-center gap-2 text-sm text-zinc-500 transition-colors hover:text-blue-400"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to assessments
+      </Link>
     </div>
   );
 }

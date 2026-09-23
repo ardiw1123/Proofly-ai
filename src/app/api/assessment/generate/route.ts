@@ -6,7 +6,7 @@ import {
   generateJsonSchema,
   generatedCaseValidator,
 } from '@/lib/ai-schemas';
-import { SESSION_TTL_MS, createSessionId, saveSession } from '@/lib/assessment-store';
+import { SESSION_TTL_MS, createSessionId, getAttemptCooldown, recordAttempt, saveSession } from '@/lib/assessment-store';
 import { TEMPERATURE_GENERATE, isAiConfigured } from '@/lib/openai';
 import {
   buildGenerateSystemPrompt,
@@ -33,14 +33,32 @@ export async function POST(request: Request) {
     return jsonError('Input tidak valid.', 400, parsed.error.flatten());
   }
 
+  const { walletAddress, skillId } = parsed.data;
+
+  // Enforced server-side so the 24h limit cannot be bypassed from the client.
+  // The clock starts when the case study is generated (see recordAttempt).
+  const cooldown = getAttemptCooldown(walletAddress);
+
+  if (cooldown.active) {
+    const remainingMinutes = Math.ceil(cooldown.remainingMs / 60_000);
+    const hours = Math.floor(remainingMinutes / 60);
+    const minutes = remainingMinutes % 60;
+    const remainingLabel = hours > 0 ? `${hours} jam ${minutes} menit` : `${minutes} menit`;
+
+    return jsonError(
+      `Kamu sudah mengerjakan assessment. Kembali lagi dalam ${remainingLabel}.`,
+      429,
+      { cooldownUntil: cooldown.cooldownUntil, remainingMs: cooldown.remainingMs },
+      { 'Retry-After': String(Math.ceil(cooldown.remainingMs / 1000)) },
+    );
+  }
+
   if (!isAiConfigured()) {
     return jsonError(
       'OPENAI_API_KEY belum diset di server. Tambahkan ke .env.local lalu restart dev server.',
       503,
     );
   }
-
-  const { walletAddress, skillId } = parsed.data;
 
   let generated: GeneratedCase;
 
@@ -87,6 +105,9 @@ export async function POST(request: Request) {
     expiresAt: now + SESSION_TTL_MS,
     consumed: false,
   });
+
+  // Start the 24h limit only once a case study actually exists for the wallet.
+  recordAttempt(walletAddress);
 
   return jsonOk(assessment);
 }
