@@ -1,96 +1,116 @@
-# Issue: Limit Assessment 24 Jam, Hapus Badge Hero, Fix Hydration Error, dan Percepat Connect Wallet
+# Issue: Fix Cooldown Reset, Countdown Real-time, Migrasi Teks ke Bahasa Inggris, Perbaikan Connect/Disconnect Wallet, dan Spacing Tagline Hero
 
 ## Ringkasan
 
-Empat perbaikan pada aplikasi:
+Lima perbaikan lanjutan setelah fitur limit 24 jam (#11) rilis:
 
-1. **Limit akses assessment**: 1 wallet hanya bisa mengerjakan soal **1 kali dalam 24 jam**.
-2. **Hapus badge** "AI-evaluated · 3 problems per session" di halaman utama.
-3. **Fix error console Next.js**: `A tree hydrated but some attributes of the server rendered HTML didn't match the client properties` di halaman utama.
-4. **Percepat respons Connect Wallet**: tombol connect/disconnect wallet saat ini lambat merespons (terukur ~3,7 detik dari klik sampai modal muncul, bahkan di browser bersih tanpa ekstensi).
+1. **Bug cooldown reset**: tombol "Cek lagi"/retry pada layar cooldown malah me-reset sisa waktu menjadi 24 jam penuh (user melihat "24 jam 1 menit" lagi setiap klik). Sisa waktu seharusnya terus berkurang, tidak pernah bertambah.
+2. **Countdown real-time**: sisa waktu cooldown harus tampil **jam:menit:detik** dan berdetak tiap detik (saat ini hanya "X jam Y menit" yang di-update tiap 30 detik).
+3. **Migrasi bahasa**: seluruh teks yang ditampilkan ke user diubah ke **Bahasa Inggris** (hackathon berskala global). Masih banyak string Bahasa Indonesia di frontend maupun pesan error API.
+4. **Perbaikan wallet**: disconnect tidak berfungsi, dan setiap `npm run dev` wallet selalu otomatis connected tanpa user klik apa pun.
+5. **Spacing tagline hero**: teks "The First On-Chain Assessment Platform" perlu sedikit didorong ke bawah agar ada jarak yang enak dilihat terhadap judul hero "Prove your skills. On chain."
 
-Kerjakan berurutan per tahap. Semua akar masalah di bawah **sudah diinvestigasi** — langsung ke titiknya, jangan cari ulang dari nol.
+Semua akar masalah di bawah **sudah diinvestigasi dan diverifikasi** — langsung kerjakan dari temuan ini, jangan investigasi ulang dari nol.
 
 ---
 
-## Konteks & Temuan Investigasi (baca dulu sebelum koding)
+## Konteks & Temuan Investigasi
 
-### Item 1 — Limit 24 jam
-- Semua soal dibuat lewat API `src/app/api/assessment/generate/route.ts`; penilaian lewat `evaluate/route.ts`. **Enforcement WAJIB di sisi server** (API route) — kalau hanya di frontend, user bisa bypass lewat console/devtools.
-- Sudah ada store sesi server-side di `src/lib/assessment-store.ts` (Map di `globalThis`, menyimpan `walletAddress` + `createdAt`). **Tapi hati-hati**: sesi dihapus otomatis setelah `SESSION_TTL_MS` = 2 jam, jadi Map sesi TIDAK BISA dipakai langsung untuk limit 24 jam — perlu catatan attempt terpisah per wallet dengan TTL 24 jam.
-- Di `evaluate/route.ts` sudah ada konstanta `COOLDOWN_SECONDS = 24 jam` dan field `cooldownUntil` yang dikirim saat user gagal — tapi **tidak pernah di-enforce** saat generate berikutnya. Fitur ini menyambungkan logika yang sudah setengah jadi itu.
-- Saat ini halaman assessment sudah di-gating wallet (PR #10), jadi setiap request generate selalu membawa `walletAddress` asli — itu kunci limitnya.
+### Item 1 — Cooldown reset ke 24 jam (akar masalah sudah ketemu, sudah dibuktikan lewat live API)
 
-### Item 2 — Badge hero
-- Lokasinya di `src/app/page.tsx`: blok `<div className="inline-flex ...">` berisi dot hijau `animate-pulse` + teks "AI-evaluated · 3 problems per session" (sekitar baris 41–44).
+Rantai bug-nya:
 
-### Item 3 — Hydration error (akar masalah sudah ketemu)
-- Bersumber dari `src/components/ui/black-hole-vortex-animation.tsx`. Perbaikan sebelumnya (PRNG seeded) sudah membuat urutan angka deterministik, tapi error masih muncul karena masalah presisi floating-point:
+- Server (`src/app/api/assessment/generate/route.ts`): saat cooldown aktif, mengembalikan HTTP 429 lewat helper `jsonError(message, 429, { cooldownUntil, remainingMs }, headers)`.
+- Helper `jsonError` di `src/lib/api.ts` menaruh objek ketiga ke dalam field **`details`**. Bentuk respons sebenarnya (terverifikasi):
+  ```json
+  { "error": "...", "details": { "cooldownUntil": 1234567890, "remainingMs": 86340000 } }
   ```
-  server: d="M 164.42798499891663 5.651054624392572 C ..."
-  client: d="M 164.42798499891663 5.6510546243926 C ..."
-  ```
-  Selisih hanya di digit terakhir. Penyebabnya: koordinat path dihitung dengan `Math.cos`/`Math.sin`, dan hasil fungsi trigonometri bisa berbeda 1 ULP antar versi V8 (Node di server vs Chrome di browser). `strokeWidth` (murni aritmetika PRNG) cocok persis — hanya koordinat hasil trigonometri yang melenceng.
-- **Arah fix**: bulatkan semua angka koordinat ke presisi tetap (mis. 2 desimal) saat merangkai string `d` — hasil pembulatan dijamin identik lintas engine. Jangan pakai `suppressHydrationWarning` (itu menutupi, bukan memperbaiki).
+- Frontend (`src/app/assessment/[skillId]/page.tsx`, handler 429 di fungsi `generate`) membaca **`data?.cooldownUntil` di top level** — selalu `undefined` karena datanya bersarang di `details`.
+- Karena `undefined`, fallback client dipakai: `Math.floor(Date.now()/1000) + 24*60*60` → **deadline baru "sekarang + 24 jam"**. Setiap klik "Cek lagi" memanggil `generate` → 429 → fallback → timer reset ke 24 jam (+ delay ≈ jadi "24 jam 1 menit").
 
-### Item 4 — Connect wallet lambat
-- Terukur objektif: klik tombol "Connect Wallet" → modal tampil = **~3.700 ms** di browser headless bersih. Jadi lambatnya bukan (hanya) dari MetaMask — halaman sendiri yang berat.
-- Tersangka utama: **150 path SVG dianimasikan tanpa henti oleh framer-motion** (repeat infinity, animasi `pathLength` per path = kerja JS terus-menerus di main thread), sehingga klik dan render modal tersendat.
-- Konsekuensinya sama untuk disconnect (modal akun juga dibuka dari halaman yang sama).
+**Arah fix**: samakan kontrak data — frontend membaca dari field yang benar (`details.cooldownUntil`), atau server mengirim `cooldownUntil` di top level. Pilih salah satu dan buat konsisten. Hapus/perbaiki fallback client yang mengarang deadline baru; jika server tidak mengirim angka yang valid, jangan pernah menambah durasi cooldown. Bonus: karena countdown sudah real-time (Item 2), tombol "Cek lagi" yang memanggil ulang API bisa dihapus atau dijadikan pengecekan ringan tanpa efek samping.
+
+### Item 2 — Countdown real-time jam:menit:detik
+
+- Lokasinya komponen `CooldownState` di `src/app/assessment/[skillId]/page.tsx`: tick saat ini `setInterval(..., 30_000)` dan format `formatRemaining` menghasilkan teks Indonesia "X jam Y menit".
+- Ubah tick menjadi 1 detik dan format menjadi `HH:MM:SS` (Bahasa Inggris/numerik, mis. `23:59:58`). Pastikan timer dibersihkan saat komponen unmount dan tidak negatif (clamp ke 0, lalu tampilkan keadaan bisa-mulai).
+
+### Item 3 — Teks Bahasa Indonesia → Inggris
+
+String Indonesia tersebar di frontend **dan** backend (pesan error API ikut tampil ke user). Inventaris hasil scan (titik awal, sisir ulang saat mengerjakan):
+
+- `src/app/assessment/[skillId]/page.tsx` — ±9 string: `formatRemaining` ("jam/menit"), "Gagal membuat soal…", "Terjadi kesalahan tak terduga.", "Isi minimal satu jawaban…", "Gagal mengevaluasi jawaban…", judul "Assessment belum tersedia", "Kamu sudah mengerjakan assessment. Kembali lagi dalam…", tombol "Cek lagi".
+- `src/app/api/assessment/generate/route.ts` — ±4 string: "Input tidak valid.", pesan cooldown 429, "OPENAI_API_KEY belum diset…".
+- `src/app/api/assessment/evaluate/route.ts` — ±7 string: "Input tidak valid.", "Sesi tidak ditemukan…", "Sesi ini sudah dievaluasi…", "Sesi ini tidak cocok…", "Sesi ini milik wallet lain.", "Tidak ada jawaban yang dikirim…", pesan API key.
+- `src/lib/schemas.ts` (±3), `src/lib/ai.ts` (±5), `src/lib/openai.ts` (1), `src/lib/ai-schemas.ts` (1), `src/app/api/health/route.ts` (±2) — termasuk pesan validasi Zod (contoh nyata dari API: `"skillId maksimal 3"`).
+
+Aturan: terjemahkan semua string yang bisa sampai ke layar user (termasuk pesan error API dan pesan validasi Zod). Komentar kode tidak wajib diubah. Setelah selesai, grep ulang kata kunci Indonesia ("tidak", "belum", "sudah", "silakan", "kamu", "gagal", "jam", "menit") di `src/` untuk memastikan tidak ada yang terlewat.
+
+### Item 4 — Wallet: auto-connect saat dev + disconnect tidak berfungsi
+
+Temuan terverifikasi:
+
+- **Peer dependency invalid**: `npm ls` melaporkan `wagmi@3.7.7 invalid: "^2.9.0" from @rainbow-me/rainbowkit@2.2.11`. RainbowKit 2.2.11 (versi terbaru yang ada) hanya mendukung wagmi 2.x, sedangkan project memasang wagmi 3.x. Kombinasi mismatch seperti ini adalah tersangka utama disconnect tidak berfungsi (state connection tidak sinkron antara RainbowKit dan wagmi).
+- **`ssr: true` tanpa storage**: `src/providers/Web3Provider.tsx` memanggil `createConfig({ ssr: true })` tanpa konfigurasi cookie storage — pola SSR wagmi yang tidak lengkap dan bisa membuat state koneksi berperilaku aneh antar server/client.
+- **Auto-connect tiap dev start**: wagmi melakukan reconnect-on-mount secara default, dan MetaMask yang sudah pernah authorize situs ini akan langsung memberikan akunnya tanpa prompt — makanya wallet selalu "sudah connected" begitu halaman dibuka.
+
+**Arah fix (urut)**:
+1. Selaraskan versi: turunkan wagmi ke 2.x yang didukung RainbowKit 2.2.11 (cek juga viem tetap kompatibel). Jangan menambah library wallet baru.
+2. Bereskan konfigurasi SSR provider: ikuti pola resmi wagmi untuk Next.js (cookie storage + initial state dari server), atau — jika tidak dibutuhkan — hapus `ssr: true`. Pilih yang paling sederhana dan stabil.
+3. Perilaku auto-connect: matikan reconnect otomatis saat mount agar wallet TIDAK connected sendiri ketika aplikasi dibuka; user harus klik Connect dulu. (Ini perilaku yang diminta owner produk.)
+4. Uji siklus penuh dengan wallet sungguhan: connect → reload halaman → disconnect → reload lagi. Disconnect harus benar-benar memutuskan (UI kembali ke tombol "Connect Wallet") dan tidak auto-connect lagi setelah reload.
+
+### Item 5 — Spacing tagline hero
+
+- Struktur: judul "Prove your skills. On chain." di-render `BlackHoleScene` (h1), lalu `children` (berisi h2 "The First On-Chain Assessment Platform" di `src/app/page.tsx`) ditarik naik dengan negative margin (`-mt-24`/`md:-mt-32`) di wrapper children `black-hole-vortex-animation.tsx` — akibatnya tagline terlalu menempel ke judul.
+- **Arah fix**: beri jarak tambahan antara h1 dan h2 — mis. kurangi tarikan negative margin pada wrapper children, atau tambah top margin/padding pada section pertama di `page.tsx`. Perubahan kecil saja; jangan ubah struktur hero. Verifikasi visual di mobile dan desktop (hero tetap terasa satu kesatuan, tidak ada teks yang bertumpuk/tenggelam di animasi).
 
 ---
 
 ## Tahapan Implementasi
 
-### Tahap 1 — Limit assessment 1x per 24 jam per wallet
-- Tambahkan pencatatan attempt per wallet di `src/lib/assessment-store.ts` (atau modul kecil terpisah): simpan kapan terakhir kali sebuah `walletAddress` memulai assessment, dengan umur data 24 jam. Ikuti pola Map-di-globalThis yang sudah ada (dengan komentar bahwa produksi sebaiknya pakai Redis/KV).
-- Enforce di `POST /api/assessment/generate`: jika wallet masih dalam masa cooldown, tolak dengan status HTTP yang tepat (mis. 429) dan sertakan **sisa waktu tunggu** dalam respons agar frontend bisa menampilkannya.
-- Frontend (`src/app/assessment/[skillId]/page.tsx`): tangani respons 429 dengan layar/pesan yang ramah — mis. "Kamu sudah mengerjakan assessment. Kembali lagi dalam X jam Y menit." Jangan biarkan muncul sebagai error generik.
-- Putuskan dan dokumentasikan di komentar: jam 24 dimulai saat **generate** (soal diambil) — pilihan paling sederhana dan menutup celah "generate berkali-kali cari soal gampang".
-- Samakan perilakunya dengan `cooldownUntil` yang sudah ada di evaluate route agar tidak ada dua mekanisme cooldown yang saling bertentangan.
+### Tahap 1 — Fix bug cooldown reset (Item 1)
+- Perbaiki kontrak data 429 sesuai arah fix di atas; pastikan sisa waktu yang ditampilkan berasal dari server dan **tidak pernah bertambah** saat user menekan retry.
 
-### Tahap 2 — Hapus badge hero
-- Hapus blok badge "AI-evaluated · 3 problems per session" dari `src/app/page.tsx`.
-- Rapikan spacing elemen di sekitar bekas badge (heading di bawahnya punya `mt-6` yang tadinya bergantung pada badge) agar hero tetap seimbang.
-- Jangan sentuh elemen hero lain.
+### Tahap 2 — Countdown real-time HH:MM:SS (Item 2)
+- Ubah interval dan format di `CooldownState`; sekalian hapus/sederhanakan tombol "Cek lagi" bila sudah tidak diperlukan.
 
-### Tahap 3 — Fix hydration error
-- Terapkan pembulatan presisi tetap pada koordinat di `black-hole-vortex-animation.tsx` sesuai temuan investigasi di atas.
-- Verifikasi: buka halaman utama dengan console browser — error hydration harus hilang total (bukan berkurang).
+### Tahap 3 — Wallet fix (Item 4)
+- Selaraskan wagmi/RainbowKit, rapikan konfigurasi SSR, matikan auto-reconnect, lalu uji siklus connect/reload/disconnect dengan wallet sungguhan. Kerjakan sebelum migrasi teks agar tidak ada rework di layar yang sama.
 
-### Tahap 4 — Percepat connect/disconnect wallet
-- Ukur dulu baseline (klik → modal tampil) supaya ada pembanding sebelum/sesudah.
-- Kurangi beban main thread dari animasi black hole. Pilih pendekatan paling sederhana yang efektif, misalnya: kurangi jumlah path secara signifikan, dan/atau hentikan animasi saat tab tidak aktif / saat modal wallet terbuka. Pertahankan nuansa visual hero.
-- Ukur ulang setelah perubahan; target: modal connect terbuka < 1 detik di kondisi normal.
-- Jika masih lambat setelah animasi diringankan, cek konfigurasi wagmi/RainbowKit di `src/providers/Web3Provider.tsx` (mis. setup `ssr: true` tanpa cookie storage) — tapi kerjakan pengurangan animasi lebih dulu karena itu tersangka terkuat.
+### Tahap 4 — Migrasi seluruh teks ke Bahasa Inggris (Item 3)
+- Terjemahkan semua string user-facing sesuai inventaris; grep ulang untuk memastikan bersih. Kerjakan setelah Tahap 1–3 supaya pesan cooldown/wallet yang baru langsung ditulis dalam Bahasa Inggris.
 
-### Tahap 5 — Verifikasi keseluruhan
-- `npm run dev`, uji manual:
-  - Wallet A generate soal → coba generate lagi (reload / track lain) → tertolak dengan pesan sisa waktu yang jelas.
-  - Badge di hero hilang, layout hero tetap rapi.
-  - Console browser bersih dari error hydration di semua halaman.
-  - Klik Connect Wallet → modal muncul cepat; disconnect juga responsif.
-  - Regresi: alur assessment normal (generate → kerjakan → submit → evaluasi) tetap jalan untuk attempt pertama.
+### Tahap 5 — Spacing tagline hero (Item 5)
+- Sesuaikan spacing, cek visual desktop & mobile.
+
+### Tahap 6 — Verifikasi keseluruhan
+- `npm run dev`, uji manual end-to-end:
+  - Trigger cooldown (generate sekali), klik retry beberapa kali → timer terus menurun, tidak pernah reset ke 24 jam.
+  - Countdown tampil HH:MM:SS dan berdetak tiap detik.
+  - Tidak ada satu pun teks Bahasa Indonesia di UI (termasuk pesan error yang muncul).
+  - Fresh load: wallet TIDAK auto-connect; connect manual berjalan; disconnect berfungsi; reload setelah disconnect tetap terputus.
+  - Tagline hero punya jarak yang wajar dari judul di mobile & desktop.
 - `npm run lint` dan `npm run build` lolos tanpa error baru.
 
 ---
 
 ## Kriteria Selesai (Definition of Done)
 
-- [ ] Wallet yang sama tidak bisa generate soal kedua dalam 24 jam — ditolak **server-side** dengan pesan sisa waktu yang jelas di UI.
-- [ ] Badge "AI-evaluated · 3 problems per session" hilang dari halaman utama tanpa merusak layout hero.
-- [ ] Tidak ada error hydration di console pada halaman mana pun.
-- [ ] Modal connect wallet terbuka < 1 detik di kondisi normal; disconnect juga responsif.
-- [ ] Alur assessment existing tidak regress.
+- [ ] Retry/"Cek lagi" pada layar cooldown tidak lagi me-reset waktu; sisa waktu hanya berkurang.
+- [ ] Countdown tampil real-time format jam:menit:detik.
+- [ ] Seluruh teks yang terlihat user berbahasa Inggris (frontend + pesan error API + pesan validasi).
+- [ ] Wallet tidak auto-connect saat aplikasi dibuka; tombol disconnect berfungsi dan statusnya bertahan setelah reload.
+- [ ] Tagline "The First On-Chain Assessment Platform" berjarak wajar dari judul hero, rapi di mobile & desktop.
+- [ ] Alur assessment normal (generate → kerjakan → submit → evaluasi) tidak regress.
 - [ ] `npm run lint` dan `npm run build` lolos.
 
 ---
 
 ## Catatan untuk Implementer
 
-- **Jangan menambah dependency baru** — semua perbaikan bisa dilakukan dengan stack yang ada.
-- **Jangan melemahkan enforcement ke client-side saja** (mis. cuma menyimpan timestamp di localStorage) — itu gampang di-reset user dan tidak memenuhi requirement.
-- Jangan pakai `suppressHydrationWarning` untuk menyapu error hydration ke bawah karpet.
-- Perubahan diharapkan terfokus pada: `assessment-store.ts` (atau modul limit baru), `generate/route.ts`, `assessment/[skillId]/page.tsx`, `page.tsx`, `black-hole-vortex-animation.tsx`, dan bila perlu `Web3Provider.tsx`.
-- Store in-memory hilang saat server restart — untuk MVP ini diterima; tuliskan batasannya di komentar kode, jangan diam-diam.
-- Kerjakan bertahap per Tahap, verifikasi tiap tahap sebelum lanjut ke berikutnya.
+- Jangan menambah dependency baru; untuk wallet justru **menyelaraskan versi yang sudah ada** (wagmi 2.x sesuai peer requirement RainbowKit 2.2.11).
+- Semua enforcement (cooldown, kepemilikan sesi) tetap di sisi server — jangan memindahkan logika pembatasan ke client.
+- Perubahan diharapkan terfokus pada: `assessment/[skillId]/page.tsx`, `api/assessment/generate|evaluate/route.ts`, `lib/api.ts` (bila kontrak 429 diubah di sana), `lib/schemas.ts` dkk. untuk teks, `providers/Web3Provider.tsx` + `package.json` untuk wallet, dan `page.tsx`/`black-hole-vortex-animation.tsx` untuk spacing hero.
+- Saat mengubah versi wagmi, cek semua pemakaiannya (`useAccount`, `ConnectButton`, dll.) masih kompatibel; jalankan build penuh, jangan hanya dev.
+- Kerjakan bertahap per Tahap dan verifikasi tiap tahap sebelum lanjut.
