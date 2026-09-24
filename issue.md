@@ -4,9 +4,10 @@
 
 User harus membayar **1 BOT token** untuk bisa mengakses dan mengerjakan assessment. Saat ini assessment hanya dibatasi connect wallet + cooldown 24 jam, tanpa pembayaran.
 
-**Konteks penting — kondisi sudah berubah sejak rencana awal:**
-- Kontrak **sudah di-deploy ke testnet** dan sudah diverifikasi on-chain (lihat di bawah). Jadi pekerjaan deployment **tidak diperlukan lagi**.
-- Sisa pekerjaan adalah **menyambungkan frontend/backend ke kontrak yang sudah live** dan menegakkan pembayaran di sisi server.
+**Kondisi prasyarat sudah beres — pekerjaan ini murni wiring:**
+- Kontrak **sudah di-deploy ke testnet** dan terverifikasi on-chain. Deployment **tidak diperlukan**.
+- Konfigurasi env (alamat kontrak + chain) **sudah benar dan sudah berada di `.env.local`** yang dibaca Next.js. Membereskan env **tidak perlu dikerjakan lagi**.
+- Sisa pekerjaan: **menyambungkan frontend/backend ke kontrak yang sudah live** dan menegakkan pembayaran di sisi server.
 
 Semua fakta di bawah **sudah diinvestigasi dan diverifikasi live** — kerjakan dari sini, jangan investigasi ulang.
 
@@ -30,22 +31,25 @@ Artinya: kontrak pembayaran **siap pakai**. Jangan mengubah/menulis ulang kontra
 - menolak jika sudah bersertifikat untuk skill itu,
 - menolak jika masih dalam cooldown 24 jam,
 - lalu `currentAttempts += 1`, set `lastAttemptTime`, emit `AssessmentStarted`.
+
 Pembayaran = **native value** (`value: parseEther('1')`), **BUKAN** ERC-20 approve/transfer. PRD 6.1 mengonfirmasi: "Native BOT Token".
+
+### ✅ Konfigurasi env SUDAH beres — jangan diubah lagi
+`.env.local` (file yang dibaca Next.js) sudah berisi nilai yang benar untuk testnet:
+- `NEXT_PUBLIC_CONTRACT_ADDRESS=0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B`
+- `NEXT_PUBLIC_BOT_CHAIN_ID=968`, `NEXT_PUBLIC_BOT_CHAIN_RPC=https://rpc.bohr.life`
+- `NEXT_PUBLIC_BOT_CHAIN_NAME=BOT Chain`, `NEXT_PUBLIC_BOT_CHAIN_EXPLORER=https://scan.bohr.life/`
+- Plus `BOT_CHAIN_RPC` / `BOT_CHAIN_ID` (non-public, untuk tooling) dan `SIGNER_PRIVATE_KEY` / `DEPLOYER_PRIVATE_KEY`.
+- `.env.example` sudah bersih (placeholder saja); kedua file env ter-gitignore.
+
+**Yang masih harus dikerjakan bukan mengisi env, tapi MEMBACANYA dari kode.** Terverifikasi: dari semua variabel di atas, hanya `NEXT_PUBLIC_BOT_CHAIN_EXPLORER` yang dipakai (`Footer.tsx`). `NEXT_PUBLIC_CONTRACT_ADDRESS`, `*_RPC`, `*_ID`, `*_NAME` **belum dibaca kode sama sekali** — menyambungkannya adalah inti pekerjaan ini (Tahap 1).
+
+> Catatan: jangan memindahkan/mengubah nilai env yang sudah ada. Jangan pula menaruh private key di variabel `NEXT_PUBLIC_*` (ikut ter-bundle ke browser). `SIGNER_PRIVATE_KEY` belum dipakai sampai flow mint SBT dibangun — tidak menghalangi fitur pembayaran ini.
 
 ### Frontend BELUM tersambung ke kontrak sama sekali (terverifikasi)
 - Nol import `viem`/`ethers` di `src/`, tidak ada file ABI, tidak ada pemanggilan kontrak. Yang dipakai baru `useAccount`/`useConnect`/`useDisconnect`.
 - `viem@2.56.8` dan `ethers@6.17.0` **sudah terpasang** sebagai dependency tapi menganggur. Pakai yang sudah ada (viem pasangan natural wagmi), jangan tambah library baru.
-- `Web3Provider.tsx` masih di-set ke **Sepolia**, bukan BOT Chain testnet.
-
-### ⚠️ KRITIS — konfigurasi env ada di file yang salah
-- Variabel kontrak/chain sudah diisi, tapi di **`.env.example`**. Next.js **TIDAK** membaca `.env.example` — ia membaca **`.env.local`** (dan `.env`). Saat ini `.env.local` **hanya** berisi `OPENAI_API_KEY`.
-- Konsekuensi: meskipun `.env.example` sudah lengkap, aplikasi **tidak akan** melihat alamat kontrak / chain config sampai nilainya dipindahkan ke `.env.local`.
-- Kode pun saat ini membaca hampir nol dari variabel ini: hanya `NEXT_PUBLIC_BOT_CHAIN_EXPLORER` yang dipakai (`Footer.tsx`). `NEXT_PUBLIC_CONTRACT_ADDRESS`, `*_RPC`, `*_ID`, `*_NAME`, `SIGNER_PRIVATE_KEY`, `DEPLOYER_PRIVATE_KEY` **belum dibaca kode** — menyambungkannya adalah bagian dari pekerjaan ini.
-
-### ⚠️ KEAMANAN — secret asli masuk ke `.env.example`
-- `.env.example` sekarang berisi nilai ASLI: `OPENAI_API_KEY=*** private key signer & deployer.
-- File ini memang sedang ter-gitignore (`.env*`) sehingga belum ikut ter-commit — **tapi** `.env.example` secara konvensi adalah file template yang *boleh* dishare/di-commit. Menaruh secret asli di sana berbahaya.
-- Perbaiki: secret asli (private key, API key) **hanya** di `.env.local`; kembalikan `.env.example` ke placeholder. Jangan pernah menaruh private key di variabel `NEXT_PUBLIC_*` (ikut ter-bundle ke browser).
+- `Web3Provider.tsx` masih di-set ke **Sepolia**, bukan BOT Chain testnet (968).
 
 ### Dua sumber kebenaran cooldown masih bertentangan
 - Kontrak: cooldown 24 jam per **(wallet, skillId)**, on-chain, tahan restart.
@@ -59,17 +63,8 @@ Soal dibuat oleh `POST /api/assessment/generate` tanpa cek pembayaran. Jika pemb
 
 ## Tahapan Implementasi
 
-### Tahap 0 — Bereskan konfigurasi env (prasyarat, lakukan pertama)
-- Pindahkan nilai kontrak & chain dari `.env.example` ke **`.env.local`** agar benar-benar dibaca Next.js. Untuk testnet:
-  - `NEXT_PUBLIC_CONTRACT_ADDRESS=0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B`
-  - `NEXT_PUBLIC_BOT_CHAIN_ID=968`, `NEXT_PUBLIC_BOT_CHAIN_RPC=https://rpc.bohr.life`
-  - `NEXT_PUBLIC_BOT_CHAIN_NAME` (label UI, bebas mis. "BOT Chain Testnet"), `NEXT_PUBLIC_BOT_CHAIN_EXPLORER=https://scan.bohr.life`
-- Kembalikan `.env.example` ke **placeholder** (tanpa secret asli). Secret asli hanya di `.env.local`.
-- Verifikasi nilai chain dari sumber resmi BOT Chain, jangan percaya angka lama: testnet = **968** (`rpc.bohr.life`, explorer `scan.bohr.life`, faucet `faucet.botchain.ai/basic`); mainnet = **677** (`rpc.botchain.ai`, explorer `scan.botchain.ai`) — dipakai nanti saat pindah mainnet.
-- Catat: signing evaluasi (`SIGNER_PRIVATE_KEY`) belum dipakai sampai flow mint SBT dibangun; tidak menghalangi fitur pembayaran ini.
-
 ### Tahap 1 — Sambungkan frontend ke BOT Chain testnet
-- Daftarkan BOT Chain testnet sebagai custom chain di konfigurasi wagmi (id 968, RPC, native currency "BOT", explorer `scan.bohr.life`), menggantikan Sepolia di `Web3Provider.tsx`.
+- Daftarkan BOT Chain testnet sebagai custom chain di konfigurasi wagmi, **membaca dari env yang sudah ada** (`NEXT_PUBLIC_BOT_CHAIN_ID` 968, `NEXT_PUBLIC_BOT_CHAIN_RPC`, native currency "BOT", explorer dari `NEXT_PUBLIC_BOT_CHAIN_EXPLORER`), menggantikan Sepolia di `Web3Provider.tsx`.
 - Buat satu modul kontrak kecil (mis. `src/lib/contract.ts`) yang membaca `NEXT_PUBLIC_CONTRACT_ADDRESS` + ABI `ProofOfSkillSBT` dari hasil compile (ekspor ABI ke modul, jangan copy-paste manual yang bisa basi).
 - Tambahkan penanganan switch/add network: jika wallet user di chain lain, arahkan pindah ke BOT Chain testnet dengan pesan jelas; jangan biarkan transaksi gagal misterius. Indikator chain di navbar harus menampilkan BOT Chain.
 
@@ -83,6 +78,7 @@ Soal dibuat oleh `POST /api/assessment/generate` tanpa cek pembayaran. Jika pemb
 ### Tahap 3 — Verifikasi pembayaran di server (inti keamanan, jangan dilewati)
 - Sebelum `/api/assessment/generate` membuat soal, server memastikan wallet ini benar-benar sudah membayar untuk attempt ini.
 - Rancang tahan-forgery & tahan-replay: frontend mengirim **transaction hash**, server memverifikasinya ke chain (alamat tujuan = kontrak, pengirim = wallet pemohon, `value` = 1 BOT, fungsi = `startAssessment`, status sukses), lalu **mencatat hash yang sudah dipakai** agar satu pembayaran tidak bisa dipakai ambil soal berulang kali.
+- Baca alamat kontrak & RPC dari env yang sudah tersedia — jangan hardcode.
 - Tolak dengan status HTTP jelas bila verifikasi gagal. Semua keputusan di server; jangan percaya klaim client.
 - Tulis batasan pendekatan di komentar kode (ketergantungan RPC, penguatan untuk produksi, state in-memory hilang saat restart).
 
@@ -106,19 +102,20 @@ Soal dibuat oleh `POST /api/assessment/generate` tanpa cek pembayaran. Jika pemb
 
 ## Kriteria Selesai (Definition of Done)
 
-- [ ] Nilai kontrak/chain berada di `.env.local` (bukan `.env.example`) dan benar-benar terbaca aplikasi; `.env.example` kembali ke placeholder tanpa secret.
-- [ ] Frontend tersambung ke BOT Chain **testnet** (968) dengan penanganan switch network yang jelas; alamat kontrak `0x9EBe…585B` dipakai.
+- [ ] Frontend tersambung ke BOT Chain **testnet** (968) dengan penanganan switch network yang jelas; alamat kontrak `0x9EBe…585B` dibaca dari env (bukan hardcode).
 - [ ] User harus membayar 1 BOT (native `msg.value`) dan tx terkonfirmasi sebelum soal bisa diakses.
 - [ ] Server menolak permintaan soal tanpa pembayaran valid — termasuk pemanggilan API langsung dan pemakaian ulang txHash yang sama.
 - [ ] Cooldown satu sumber kebenaran (kontrak); tidak ada penolakan ganda yang membingungkan.
 - [ ] Semua keadaan gagal punya pesan EN yang jelas (saldo kurang, ditolak user, cooldown, network salah).
 - [ ] Ada test kontrak untuk logika pembayaran; `lint` & `build` lolos.
+- [ ] Konfigurasi env yang sudah ada tidak diubah/dirusak (`.env.local` tetap berisi nilai testnet, `.env.example` tetap placeholder, tidak ada secret yang ter-commit).
 
 ---
 
 ## Catatan untuk Implementer
 
 - **Jangan deploy ulang / mengubah kontrak** — sudah live & terverifikasi di testnet. Kalau merasa perlu ubah kontrak, jelaskan alasannya dulu.
+- **Jangan mengutak-atik konfigurasi env** — sudah benar dan sudah di `.env.local`. Tugasnya membuat kode MEMBACA nilai itu, bukan memindahkannya.
 - **Jangan menambah dependency baru** — viem/ethers, wagmi, RainbowKit, hardhat, chai sudah terpasang.
 - Pembayaran = **native value**, bukan ERC-20. Jangan membangun alur approve/transfer ERC-20.
 - **Jangan pernah** men-commit private key / menaruhnya di `NEXT_PUBLIC_*`. Secret hanya di `.env.local`.
@@ -127,4 +124,4 @@ Soal dibuat oleh `POST /api/assessment/generate` tanpa cek pembayaran. Jika pemb
 - `hardhat.config.ts` belum punya `networks` dan belum ada `scripts/`. Hanya diperlukan bila butuh redeploy/interaksi via hardhat; fitur ini utamanya wiring frontend+server ke kontrak live, jadi deployment bukan prasyarat.
 - Store in-memory server hilang saat restart & tidak shared antar instance — kalau dipakai untuk state pembayaran, itu celah; catat batasannya, jangan diam-diam.
 - Kalau ada langkah yang gagal (mis. RPC/faucet tidak bisa dipakai), **jangan memalsukan** keberhasilan atau mengarang txHash/alamat. Laporkan hambatannya jujur dan berhenti di tahap itu.
-- Kerjakan bertahap per Tahap, verifikasi tiap tahap sebelum lanjut. **Tahap 0 dan Tahap 3** adalah yang paling menentukan keberhasilan & keamanan — jangan dilewati demi tampilan.
+- Kerjakan bertahap per Tahap, verifikasi tiap tahap sebelum lanjut. **Tahap 3** adalah inti keamanan — jangan dilewati demi tampilan.
