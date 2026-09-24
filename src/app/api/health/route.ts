@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   if (!isAiConfigured()) {
     return jsonError(
-      'OPENAI_API_KEY belum diset. Salin .env.example menjadi .env.local lalu paste API key Anda.',
+      'OPENAI_API_KEY is not configured. Copy .env.example to .env.local and add your API key.',
       503,
     );
   }
@@ -35,6 +35,6 @@ export async function GET() {
     }
 
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return jsonError(`Gagal memanggil ${AI_MODEL}: ${message}`, 502);
+    return jsonError(`Failed to call ${AI_MODEL}: ${message}`, 502);
   }
 }

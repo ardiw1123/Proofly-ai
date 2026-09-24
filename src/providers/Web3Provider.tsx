@@ -4,6 +4,7 @@ import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { createConfig, http } from 'wagmi';
+import { injected } from 'wagmi/connectors';
 import { sepolia } from 'wagmi/chains';
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -13,15 +14,21 @@ const queryClient = new QueryClient();
 
 const config = createConfig({
   chains: [sepolia],
+  connectors: [
+    injected({
+      target: 'metaMask',
+      shimDisconnect: true,
+    }),
+  ],
   transports: {
     [sepolia.id]: http('https://rpc.sepolia.org'),
   },
-  ssr: true,
+  ssr: false,
 });
 
 export function Web3Provider({ children }: { children: ReactNode }) {
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={config} reconnectOnMount={false}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider
           theme={darkTheme({

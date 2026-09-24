@@ -73,7 +73,7 @@ export async function generateStructuredJson<T>(
   }
 
   throw new AiCallError(
-    'AI mengembalikan data yang tidak valid setelah beberapa percobaan. Silakan coba lagi.',
+    'The AI returned invalid data after multiple attempts. Please try again.',
   );
 }
 
@@ -96,19 +96,19 @@ function toAiCallError(error: unknown): Error {
       : undefined;
 
   if (status === 401) {
-    return new AiCallError('OPENAI_API_KEY tidak valid atau sudah kedaluwarsa.');
+    return new AiCallError('OPENAI_API_KEY is invalid or has expired.');
   }
 
   if (status === 429) {
     return new AiCallError(
-      'Kuota atau rate limit layanan AI tercapai. Silakan coba lagi beberapa saat lagi.',
+      'The AI service quota or rate limit has been reached. Please try again shortly.',
     );
   }
 
   if (status === 404) {
-    return new AiCallError('Model AI tidak tersedia untuk API key ini.');
+    return new AiCallError('The AI model is unavailable for this API key.');
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  return new AiCallError(`Gagal menghubungi layanan AI: ${message}`);
+  return new AiCallError(`Failed to reach the AI service: ${message}`);
 }

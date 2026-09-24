@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Award, ChevronDown } from 'lucide-react';
+import { Award } from 'lucide-react';
+import { WalletControl } from '@/components/WalletControl';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Assessments' },
@@ -53,43 +53,7 @@ export function Navbar() {
         </div>
 
         <div className="justify-self-end">
-          <ConnectButton.Custom>
-            {({
-              account,
-              chain,
-              openAccountModal,
-              openConnectModal,
-              mounted,
-            }) => {
-              const connected = mounted && Boolean(account && chain);
-
-              return (
-                <div
-                  className={mounted ? 'transition-opacity' : 'pointer-events-none opacity-0'}
-                >
-                  {connected ? (
-                    <button
-                      type="button"
-                      onClick={openAccountModal}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-blue-500/60"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      {account?.displayName}
-                      <ChevronDown className="h-4 w-4 text-zinc-500" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={openConnectModal}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.45)]"
-                    >
-                      Connect Wallet
-                    </button>
-                  )}
-                </div>
-              );
-            }}
-          </ConnectButton.Custom>
+          <WalletControl />
         </div>
       </div>
     </nav>

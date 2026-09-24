@@ -170,7 +170,7 @@ export const evaluationValidator = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['score'],
-        message: `score (${value.score}) tidak konsisten dengan total rubrik (${breakdownTotal})`,
+        message: `score (${value.score}) does not match the rubric total (${breakdownTotal})`,
       });
     }
   });

@@ -15,7 +15,7 @@ export const TEMPERATURE_EVALUATE = 0.1;
 export class AiConfigError extends Error {
   constructor() {
     super(
-      'OPENAI_API_KEY belum diset. Salin .env.example menjadi .env.local lalu paste API key Anda.',
+      'OPENAI_API_KEY is not configured. Copy .env.example to .env.local and add your API key.',
     );
     this.name = 'AiConfigError';
   }
