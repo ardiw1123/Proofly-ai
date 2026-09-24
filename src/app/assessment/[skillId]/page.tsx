@@ -55,8 +55,6 @@ const DIFFICULTY_STYLES: Record<ProblemDifficulty, string> = {
   advanced: 'border-red-500/30 bg-red-500/10 text-red-400',
 };
 
-const FAUCET_URL = 'https://faucet.botchain.ai/basic';
-
 function formatRemaining(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -145,7 +143,7 @@ export default function AssessmentStudioPage({
         setOnChainError(
           err instanceof Error
             ? err.message
-            : 'Could not fetch candidate status from BOT Chain testnet.',
+            : 'Could not fetch candidate status from BOT Chain.',
         );
       } finally {
         if (!silent) {
@@ -174,7 +172,7 @@ export default function AssessmentStudioPage({
           setOnChainError(
             err instanceof Error
               ? err.message
-              : 'Could not fetch candidate status from BOT Chain testnet.',
+              : 'Could not fetch candidate status from BOT Chain.',
           );
         }
       });
@@ -200,7 +198,7 @@ export default function AssessmentStudioPage({
     // Pre-check balance: need 1 BOT + small gas
     if (balanceData && balanceData.value < parseEther('1')) {
       setPaymentError(
-        'Insufficient BOT balance. You need at least 1.0 BOT for the assessment fee plus gas. Please request testnet tokens from the faucet.',
+        'Insufficient BOT balance. You need at least 1.0 BOT for the assessment fee plus gas. Please ensure your wallet has native BOT on BOT Chain Mainnet.',
       );
       return;
     }
@@ -246,12 +244,12 @@ export default function AssessmentStudioPage({
       const receipt = await client.waitForTransactionReceipt({ hash: txHash });
       if (receipt.status !== 'success') {
         setPaymentPhase('error');
-        setPaymentError('Transaction failed on BOT Chain testnet. Please verify the transaction on explorer.');
+        setPaymentError('Transaction failed on BOT Chain. Please verify the transaction on explorer.');
         return;
       }
     } catch {
       setPaymentPhase('error');
-      setPaymentError('Failed to confirm transaction on BOT Chain testnet. Check explorer for status.');
+      setPaymentError('Failed to confirm transaction on BOT Chain. Check explorer for status.');
       return;
     }
 
@@ -637,7 +635,7 @@ function PaymentGate({
             </div>
             <div className="flex items-center justify-between text-sm border-t border-zinc-800/80 pt-4">
               <span className="text-zinc-400">Network</span>
-              <span className="font-mono text-zinc-300">{botChain.name} (Testnet)</span>
+              <span className="font-mono text-zinc-300">{botChain.name}</span>
             </div>
             <div className="flex items-center justify-between text-sm border-t border-zinc-800/80 pt-4">
               <span className="text-zinc-400">Your Native BOT Balance</span>
@@ -660,18 +658,8 @@ function PaymentGate({
                 <div className="text-xs text-amber-200 space-y-1">
                   <p className="font-semibold">Insufficient BOT balance</p>
                   <p>
-                    You need at least 1.0 BOT for the assessment fee plus gas. Please obtain free testnet
-                    tokens from the BOT Chain faucet.
+                    You need at least 1.0 BOT for the assessment fee plus gas. Please ensure your wallet has native BOT tokens on BOT Chain Mainnet before starting.
                   </p>
-                  <a
-                    href={FAUCET_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-amber-300 underline hover:text-amber-200"
-                  >
-                    Open BOT Chain Faucet
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
                 </div>
               </div>
             </div>
@@ -718,7 +706,7 @@ function PaymentGate({
           {paymentPhase === 'confirming' && (
             <div className="mt-5 flex items-center justify-center gap-2 rounded-2xl border border-blue-500/30 bg-blue-500/5 py-4 text-sm text-blue-300">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Waiting for block confirmation on BOT Chain testnet...</span>
+              <span>Waiting for block confirmation on BOT Chain...</span>
             </div>
           )}
 
@@ -776,12 +764,12 @@ function PaymentGate({
 
             <div className="flex items-center justify-between px-2 pt-2 text-xs text-zinc-500">
               <a
-                href={FAUCET_URL}
+                href={botChain.blockExplorers.default.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 hover:text-blue-400"
               >
-                Get testnet BOT from faucet
+                BOT Chain Explorer
                 <ExternalLink className="h-3 w-3" />
               </a>
 

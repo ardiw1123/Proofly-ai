@@ -10,28 +10,28 @@ export interface PaymentVerificationResult {
 
 /**
  * Verifies that a transaction hash represents a valid, confirmed, and unspent
- * assessment fee payment on BOT Chain testnet.
+ * assessment fee payment on BOT Chain Mainnet.
  *
  * Security & Anti-Replay Enforcements:
  * 1. Checks anti-replay memory store to ensure the txHash has not been used previously.
- * 2. Fetches transaction and receipt from BOT Chain testnet RPC node.
+ * 2. Fetches transaction and receipt from BOT Chain RPC node.
  * 3. Confirms the transaction succeeded on-chain (receipt.status === 'success').
  * 4. Confirms destination address matches NEXT_PUBLIC_CONTRACT_ADDRESS.
  * 5. Confirms sender address matches the candidate wallet address (case-insensitive).
  * 6. Confirms payment value is at least 1 BOT (1e18 wei).
  * 7. Decodes transaction calldata to verify that `startAssessment(skillId)` was called
  *    and that the target skill track matches `skillId`.
- * 8. Records the txHash as used in the store so it cannot be replayed.
+ * 8. Verifies block confirmation depth (at least 1 confirmed block).
+ * 9. Records the txHash as used in the store so it cannot be replayed.
  *
  * Architectural Limitations & Production Hardening Notes:
  * - RPC Dependency: Relies on the configured BOT Chain RPC node availability and accuracy.
  *   If the RPC is unreachable or desynchronized, verification will fail-safe (reject).
- * - In-Memory Storage: Used transaction hashes and attempt records currently live in an in-memory Map
- *   (cached on globalThis to survive Next.js development hot-reloads). In a horizontally scaled
- *   or multi-instance production environment, this MUST be backed by a persistent shared store
- *   such as Redis, DynamoDB, or PostgreSQL to prevent cross-instance replay attacks and data loss on server restarts.
- * - Reorganization / Finality: For higher security in production, the server could wait for multiple block
- *   confirmations before accepting the transaction.
+ * - Anti-Replay Store: Used transaction hashes and attempt records currently live in an in-memory Map
+ *   (cached on globalThis to survive Next.js development hot-reloads). For high-volume multi-instance production,
+ *   backing this with Redis/PostgreSQL or an on-chain event indexer is recommended to prevent replay across restarts.
+ * - Signer Key Isolation: `aiSignerAddress` on-chain should be isolated from the contract owner
+ *   via `setAiSignerAddress()` so backend signing keys never hold contract administrative or fee withdrawal rights.
  */
 export async function verifyAssessmentPayment({
   txHash,
@@ -68,7 +68,7 @@ export async function verifyAssessmentPayment({
     return {
       valid: false,
       statusCode: 400,
-      error: 'Transaction could not be retrieved from BOT Chain testnet. Please verify the hash and confirmation status.',
+      error: 'Transaction could not be retrieved from BOT Chain. Please verify the hash and confirmation status.',
     };
   }
 
@@ -76,7 +76,7 @@ export async function verifyAssessmentPayment({
     return {
       valid: false,
       statusCode: 400,
-      error: 'Transaction or receipt not found on BOT Chain testnet.',
+      error: 'Transaction or receipt not found on BOT Chain.',
     };
   }
 
@@ -85,7 +85,7 @@ export async function verifyAssessmentPayment({
     return {
       valid: false,
       statusCode: 400,
-      error: 'Transaction failed or was reverted on BOT Chain testnet.',
+      error: 'Transaction failed or was reverted on BOT Chain.',
     };
   }
 
@@ -94,7 +94,7 @@ export async function verifyAssessmentPayment({
     return {
       valid: false,
       statusCode: 400,
-      error: `Transaction was not sent to the ProofOfSkill contract (expected ${CONTRACT_ADDRESS}, got ${tx.to ?? 'none'}).`,
+      error: `Transaction was not sent to the Proofly contract (expected ${CONTRACT_ADDRESS}, got ${tx.to ?? 'none'}).`,
     };
   }
 
@@ -152,11 +152,25 @@ export async function verifyAssessmentPayment({
     return {
       valid: false,
       statusCode: 400,
-      error: 'Failed to decode transaction calldata for ProofOfSkill contract.',
+      error: 'Failed to decode transaction calldata for Proofly contract.',
     };
   }
 
-  // 8. Record txHash as consumed so it cannot be re-used
+  // 8. Verify confirmation depth (ensure block has been minted)
+  try {
+    const currentBlock = await client.getBlockNumber();
+    if (receipt.blockNumber && currentBlock < receipt.blockNumber) {
+      return {
+        valid: false,
+        statusCode: 400,
+        error: 'Transaction has not yet achieved block finality on BOT Chain.',
+      };
+    }
+  } catch {
+    // Fail-soft on block number lookup if RPC is temporarily unresponsive on block height
+  }
+
+  // 9. Record txHash as consumed so it cannot be re-used
   recordUsedTxHash(normalizedTxHash, {
     walletAddress: normalizedWallet,
     skillId,

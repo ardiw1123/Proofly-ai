@@ -1,10 +1,10 @@
 import { createPublicClient, defineChain, http, type Abi, type Address } from 'viem';
 import proofOfSkillAbiJson from './abi/ProofOfSkillSBT.json';
 
-export const BOT_CHAIN_ID = Number(process.env.NEXT_PUBLIC_BOT_CHAIN_ID ?? 968);
-export const BOT_CHAIN_NAME = process.env.NEXT_PUBLIC_BOT_CHAIN_NAME ?? 'BOT Chain';
-export const BOT_CHAIN_RPC = process.env.NEXT_PUBLIC_BOT_CHAIN_RPC ?? 'https://rpc.bohr.life';
-export const BOT_CHAIN_EXPLORER = process.env.NEXT_PUBLIC_BOT_CHAIN_EXPLORER ?? 'https://scan.bohr.life/';
+export const BOT_CHAIN_ID = Number(process.env.NEXT_PUBLIC_BOT_CHAIN_ID ?? 677);
+export const BOT_CHAIN_NAME = process.env.NEXT_PUBLIC_BOT_CHAIN_NAME ?? 'BOT Chain Mainnet';
+export const BOT_CHAIN_RPC = process.env.NEXT_PUBLIC_BOT_CHAIN_RPC ?? 'https://rpc.botchain.ai';
+export const BOT_CHAIN_EXPLORER = process.env.NEXT_PUBLIC_BOT_CHAIN_EXPLORER ?? 'https://scan.botchain.ai/';
 export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   '0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B') as Address;
 
@@ -30,7 +30,7 @@ export const botChain = defineChain({
       url: BOT_CHAIN_EXPLORER,
     },
   },
-  testnet: true,
+  testnet: false,
 });
 
 export const proofOfSkillAbi = proofOfSkillAbiJson as Abi;
@@ -57,7 +57,7 @@ export function getPublicClient() {
   const rpcUrl =
     process.env.BOT_CHAIN_RPC ||
     process.env.NEXT_PUBLIC_BOT_CHAIN_RPC ||
-    'https://rpc.bohr.life';
+    'https://rpc.botchain.ai';
 
   return createPublicClient({
     chain: botChain,

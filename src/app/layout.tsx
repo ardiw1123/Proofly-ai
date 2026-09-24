@@ -17,9 +17,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ProofOfSkill a Decentralized AI Skill Verification",
+  title: "Proofly — Decentralized AI Skill Verification",
   description:
     "AI-generated case study assessments with independent Technical Lead evaluation, verified on BOT Chain.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-48.png", sizes: "48x48", type: "image/png" },
+    ],
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

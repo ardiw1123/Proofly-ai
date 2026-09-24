@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Proofly
+
+Proofly is a decentralized on-chain skill verification platform built on BOT Chain. Candidates solve dynamic AI-generated case studies evaluated by an independent AI Technical Lead, earning Soulbound Token (SBT) certificates upon scoring 80+.
+
+## Features
+
+- **Dynamic Case Studies**: Fresh business problem sets per session generated via AI.
+- **On-Chain Assessment Gating**: 1 BOT fee payment verified directly on BOT Chain Mainnet (`startAssessment`).
+- **Cooldown & Certification Guards**: 24-hour cooldown per track and single-issuance Soulbound tokens enforced by smart contracts.
+- **Independent Evaluation**: Automated multi-criteria rubric evaluation and feedback.
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router, React 19)
+- **Styling**: Tailwind CSS
+- **Web3**: Wagmi, Viem, Hardhat
+- **Blockchain**: BOT Chain Mainnet (Chain ID: 677)
 
 ## Getting Started
 
-First, run the development server:
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+2. Configure environment variables in `.env.local`:
+   ```bash
+   NEXT_PUBLIC_BOT_CHAIN_ID=677
+   NEXT_PUBLIC_BOT_CHAIN_RPC=https://rpc.botchain.ai
+   NEXT_PUBLIC_BOT_CHAIN_NAME="BOT Chain Mainnet"
+   NEXT_PUBLIC_BOT_CHAIN_EXPLORER=https://scan.botchain.ai
+   NEXT_PUBLIC_CONTRACT_ADDRESS=0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B
+   OPENAI_API_KEY=your_key_here
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+4. Run tests:
+   ```bash
+   npm test
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
