@@ -1,116 +1,130 @@
-# Issue: Fix Cooldown Reset, Countdown Real-time, Migrasi Teks ke Bahasa Inggris, Perbaikan Connect/Disconnect Wallet, dan Spacing Tagline Hero
+# Issue: Bayar 1 BOT Token untuk Mengakses Assessment (Testnet)
 
 ## Ringkasan
 
-Lima perbaikan lanjutan setelah fitur limit 24 jam (#11) rilis:
+User harus membayar **1 BOT token** untuk bisa mengakses dan mengerjakan assessment. Saat ini assessment hanya dibatasi connect wallet + cooldown 24 jam, tanpa pembayaran.
 
-1. **Bug cooldown reset**: tombol "Cek lagi"/retry pada layar cooldown malah me-reset sisa waktu menjadi 24 jam penuh (user melihat "24 jam 1 menit" lagi setiap klik). Sisa waktu seharusnya terus berkurang, tidak pernah bertambah.
-2. **Countdown real-time**: sisa waktu cooldown harus tampil **jam:menit:detik** dan berdetak tiap detik (saat ini hanya "X jam Y menit" yang di-update tiap 30 detik).
-3. **Migrasi bahasa**: seluruh teks yang ditampilkan ke user diubah ke **Bahasa Inggris** (hackathon berskala global). Masih banyak string Bahasa Indonesia di frontend maupun pesan error API.
-4. **Perbaikan wallet**: disconnect tidak berfungsi, dan setiap `npm run dev` wallet selalu otomatis connected tanpa user klik apa pun.
-5. **Spacing tagline hero**: teks "The First On-Chain Assessment Platform" perlu sedikit didorong ke bawah agar ada jarak yang enak dilihat terhadap judul hero "Prove your skills. On chain."
+**Konteks penting — kondisi sudah berubah sejak rencana awal:**
+- Kontrak **sudah di-deploy ke testnet** dan sudah diverifikasi on-chain (lihat di bawah). Jadi pekerjaan deployment **tidak diperlukan lagi**.
+- Sisa pekerjaan adalah **menyambungkan frontend/backend ke kontrak yang sudah live** dan menegakkan pembayaran di sisi server.
 
-Semua akar masalah di bawah **sudah diinvestigasi dan diverifikasi** — langsung kerjakan dari temuan ini, jangan investigasi ulang dari nol.
+Semua fakta di bawah **sudah diinvestigasi dan diverifikasi live** — kerjakan dari sini, jangan investigasi ulang.
 
 ---
 
-## Konteks & Temuan Investigasi
+## Kondisi Terkini (terverifikasi on-chain & di kode)
 
-### Item 1 — Cooldown reset ke 24 jam (akar masalah sudah ketemu, sudah dibuktikan lewat live API)
+### Kontrak sudah LIVE di testnet — jangan deploy ulang
+Dibaca langsung dari RPC testnet (`https://rpc.bohr.life`, chainId **968**):
+- Alamat: `0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B` — `eth_getCode` mengembalikan bytecode (kontrak ada; di mainnet 677 alamat ini kosong).
+- `name()` / `symbol()` = "ProofOfSkill Soulbound Certificate" / "POS-SBT" → cocok persis dengan `contracts/ProofOfSkillSBT.sol`.
+- `assessmentFee()` = **1.0 BOT** (1e18 wei) ✓
+- `COOLDOWN_PERIOD()` = **86400 detik = 24 jam** ✓
+- `owner()` dan `aiSignerAddress()` = `0xd109648075DC72F2ADCFeA5b5869cd75188Ba294` (satu wallet yang sama, non-zero — deployer sekaligus signer).
 
-Rantai bug-nya:
+Artinya: kontrak pembayaran **siap pakai**. Jangan mengubah/menulis ulang kontrak untuk fitur ini kecuali ada alasan kuat yang dijelaskan lebih dulu.
 
-- Server (`src/app/api/assessment/generate/route.ts`): saat cooldown aktif, mengembalikan HTTP 429 lewat helper `jsonError(message, 429, { cooldownUntil, remainingMs }, headers)`.
-- Helper `jsonError` di `src/lib/api.ts` menaruh objek ketiga ke dalam field **`details`**. Bentuk respons sebenarnya (terverifikasi):
-  ```json
-  { "error": "...", "details": { "cooldownUntil": 1234567890, "remainingMs": 86340000 } }
-  ```
-- Frontend (`src/app/assessment/[skillId]/page.tsx`, handler 429 di fungsi `generate`) membaca **`data?.cooldownUntil` di top level** — selalu `undefined` karena datanya bersarang di `details`.
-- Karena `undefined`, fallback client dipakai: `Math.floor(Date.now()/1000) + 24*60*60` → **deadline baru "sekarang + 24 jam"**. Setiap klik "Cek lagi" memanggil `generate` → 429 → fallback → timer reset ke 24 jam (+ delay ≈ jadi "24 jam 1 menit").
+### Logika pembayaran sudah ada di kontrak
+`startAssessment(uint8 skillId) external payable`:
+- menolak jika `msg.value != assessmentFee` (harus tepat 1 BOT),
+- menolak jika sudah bersertifikat untuk skill itu,
+- menolak jika masih dalam cooldown 24 jam,
+- lalu `currentAttempts += 1`, set `lastAttemptTime`, emit `AssessmentStarted`.
+Pembayaran = **native value** (`value: parseEther('1')`), **BUKAN** ERC-20 approve/transfer. PRD 6.1 mengonfirmasi: "Native BOT Token".
 
-**Arah fix**: samakan kontrak data — frontend membaca dari field yang benar (`details.cooldownUntil`), atau server mengirim `cooldownUntil` di top level. Pilih salah satu dan buat konsisten. Hapus/perbaiki fallback client yang mengarang deadline baru; jika server tidak mengirim angka yang valid, jangan pernah menambah durasi cooldown. Bonus: karena countdown sudah real-time (Item 2), tombol "Cek lagi" yang memanggil ulang API bisa dihapus atau dijadikan pengecekan ringan tanpa efek samping.
+### Frontend BELUM tersambung ke kontrak sama sekali (terverifikasi)
+- Nol import `viem`/`ethers` di `src/`, tidak ada file ABI, tidak ada pemanggilan kontrak. Yang dipakai baru `useAccount`/`useConnect`/`useDisconnect`.
+- `viem@2.56.8` dan `ethers@6.17.0` **sudah terpasang** sebagai dependency tapi menganggur. Pakai yang sudah ada (viem pasangan natural wagmi), jangan tambah library baru.
+- `Web3Provider.tsx` masih di-set ke **Sepolia**, bukan BOT Chain testnet.
 
-### Item 2 — Countdown real-time jam:menit:detik
+### ⚠️ KRITIS — konfigurasi env ada di file yang salah
+- Variabel kontrak/chain sudah diisi, tapi di **`.env.example`**. Next.js **TIDAK** membaca `.env.example` — ia membaca **`.env.local`** (dan `.env`). Saat ini `.env.local` **hanya** berisi `OPENAI_API_KEY`.
+- Konsekuensi: meskipun `.env.example` sudah lengkap, aplikasi **tidak akan** melihat alamat kontrak / chain config sampai nilainya dipindahkan ke `.env.local`.
+- Kode pun saat ini membaca hampir nol dari variabel ini: hanya `NEXT_PUBLIC_BOT_CHAIN_EXPLORER` yang dipakai (`Footer.tsx`). `NEXT_PUBLIC_CONTRACT_ADDRESS`, `*_RPC`, `*_ID`, `*_NAME`, `SIGNER_PRIVATE_KEY`, `DEPLOYER_PRIVATE_KEY` **belum dibaca kode** — menyambungkannya adalah bagian dari pekerjaan ini.
 
-- Lokasinya komponen `CooldownState` di `src/app/assessment/[skillId]/page.tsx`: tick saat ini `setInterval(..., 30_000)` dan format `formatRemaining` menghasilkan teks Indonesia "X jam Y menit".
-- Ubah tick menjadi 1 detik dan format menjadi `HH:MM:SS` (Bahasa Inggris/numerik, mis. `23:59:58`). Pastikan timer dibersihkan saat komponen unmount dan tidak negatif (clamp ke 0, lalu tampilkan keadaan bisa-mulai).
+### ⚠️ KEAMANAN — secret asli masuk ke `.env.example`
+- `.env.example` sekarang berisi nilai ASLI: `OPENAI_API_KEY=*** private key signer & deployer.
+- File ini memang sedang ter-gitignore (`.env*`) sehingga belum ikut ter-commit — **tapi** `.env.example` secara konvensi adalah file template yang *boleh* dishare/di-commit. Menaruh secret asli di sana berbahaya.
+- Perbaiki: secret asli (private key, API key) **hanya** di `.env.local`; kembalikan `.env.example` ke placeholder. Jangan pernah menaruh private key di variabel `NEXT_PUBLIC_*` (ikut ter-bundle ke browser).
 
-### Item 3 — Teks Bahasa Indonesia → Inggris
+### Dua sumber kebenaran cooldown masih bertentangan
+- Kontrak: cooldown 24 jam per **(wallet, skillId)**, on-chain, tahan restart.
+- Server (`src/lib/assessment-store.ts`): cooldown 24 jam per **wallet global**, in-memory (hilang saat restart).
+- Dibiarkan bersamaan → bug nyata: user bayar track Solidity tapi ditolak server karena 20 jam lalu mengerjakan track SQL. Harus disatukan (Tahap 4).
 
-String Indonesia tersebar di frontend **dan** backend (pesan error API ikut tampil ke user). Inventaris hasil scan (titik awal, sisir ulang saat mengerjakan):
-
-- `src/app/assessment/[skillId]/page.tsx` — ±9 string: `formatRemaining` ("jam/menit"), "Gagal membuat soal…", "Terjadi kesalahan tak terduga.", "Isi minimal satu jawaban…", "Gagal mengevaluasi jawaban…", judul "Assessment belum tersedia", "Kamu sudah mengerjakan assessment. Kembali lagi dalam…", tombol "Cek lagi".
-- `src/app/api/assessment/generate/route.ts` — ±4 string: "Input tidak valid.", pesan cooldown 429, "OPENAI_API_KEY belum diset…".
-- `src/app/api/assessment/evaluate/route.ts` — ±7 string: "Input tidak valid.", "Sesi tidak ditemukan…", "Sesi ini sudah dievaluasi…", "Sesi ini tidak cocok…", "Sesi ini milik wallet lain.", "Tidak ada jawaban yang dikirim…", pesan API key.
-- `src/lib/schemas.ts` (±3), `src/lib/ai.ts` (±5), `src/lib/openai.ts` (1), `src/lib/ai-schemas.ts` (1), `src/app/api/health/route.ts` (±2) — termasuk pesan validasi Zod (contoh nyata dari API: `"skillId maksimal 3"`).
-
-Aturan: terjemahkan semua string yang bisa sampai ke layar user (termasuk pesan error API dan pesan validasi Zod). Komentar kode tidak wajib diubah. Setelah selesai, grep ulang kata kunci Indonesia ("tidak", "belum", "sudah", "silakan", "kamu", "gagal", "jam", "menit") di `src/` untuk memastikan tidak ada yang terlewat.
-
-### Item 4 — Wallet: auto-connect saat dev + disconnect tidak berfungsi
-
-Temuan terverifikasi:
-
-- **Peer dependency invalid**: `npm ls` melaporkan `wagmi@3.7.7 invalid: "^2.9.0" from @rainbow-me/rainbowkit@2.2.11`. RainbowKit 2.2.11 (versi terbaru yang ada) hanya mendukung wagmi 2.x, sedangkan project memasang wagmi 3.x. Kombinasi mismatch seperti ini adalah tersangka utama disconnect tidak berfungsi (state connection tidak sinkron antara RainbowKit dan wagmi).
-- **`ssr: true` tanpa storage**: `src/providers/Web3Provider.tsx` memanggil `createConfig({ ssr: true })` tanpa konfigurasi cookie storage — pola SSR wagmi yang tidak lengkap dan bisa membuat state koneksi berperilaku aneh antar server/client.
-- **Auto-connect tiap dev start**: wagmi melakukan reconnect-on-mount secara default, dan MetaMask yang sudah pernah authorize situs ini akan langsung memberikan akunnya tanpa prompt — makanya wallet selalu "sudah connected" begitu halaman dibuka.
-
-**Arah fix (urut)**:
-1. Selaraskan versi: turunkan wagmi ke 2.x yang didukung RainbowKit 2.2.11 (cek juga viem tetap kompatibel). Jangan menambah library wallet baru.
-2. Bereskan konfigurasi SSR provider: ikuti pola resmi wagmi untuk Next.js (cookie storage + initial state dari server), atau — jika tidak dibutuhkan — hapus `ssr: true`. Pilih yang paling sederhana dan stabil.
-3. Perilaku auto-connect: matikan reconnect otomatis saat mount agar wallet TIDAK connected sendiri ketika aplikasi dibuka; user harus klik Connect dulu. (Ini perilaku yang diminta owner produk.)
-4. Uji siklus penuh dengan wallet sungguhan: connect → reload halaman → disconnect → reload lagi. Disconnect harus benar-benar memutuskan (UI kembali ke tombol "Connect Wallet") dan tidak auto-connect lagi setelah reload.
-
-### Item 5 — Spacing tagline hero
-
-- Struktur: judul "Prove your skills. On chain." di-render `BlackHoleScene` (h1), lalu `children` (berisi h2 "The First On-Chain Assessment Platform" di `src/app/page.tsx`) ditarik naik dengan negative margin (`-mt-24`/`md:-mt-32`) di wrapper children `black-hole-vortex-animation.tsx` — akibatnya tagline terlalu menempel ke judul.
-- **Arah fix**: beri jarak tambahan antara h1 dan h2 — mis. kurangi tarikan negative margin pada wrapper children, atau tambah top margin/padding pada section pertama di `page.tsx`. Perubahan kecil saja; jangan ubah struktur hero. Verifikasi visual di mobile dan desktop (hero tetap terasa satu kesatuan, tidak ada teks yang bertumpuk/tenggelam di animasi).
+### Celah keamanan yang wajib ditutup
+Soal dibuat oleh `POST /api/assessment/generate` tanpa cek pembayaran. Jika pembayaran hanya dipasang di tombol frontend, user bisa memanggil API langsung lewat console dan **dapat soal gratis**. Pembayaran harus diverifikasi server-side (prinsip sama seperti limit 24 jam di issue #11).
 
 ---
 
 ## Tahapan Implementasi
 
-### Tahap 1 — Fix bug cooldown reset (Item 1)
-- Perbaiki kontrak data 429 sesuai arah fix di atas; pastikan sisa waktu yang ditampilkan berasal dari server dan **tidak pernah bertambah** saat user menekan retry.
+### Tahap 0 — Bereskan konfigurasi env (prasyarat, lakukan pertama)
+- Pindahkan nilai kontrak & chain dari `.env.example` ke **`.env.local`** agar benar-benar dibaca Next.js. Untuk testnet:
+  - `NEXT_PUBLIC_CONTRACT_ADDRESS=0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B`
+  - `NEXT_PUBLIC_BOT_CHAIN_ID=968`, `NEXT_PUBLIC_BOT_CHAIN_RPC=https://rpc.bohr.life`
+  - `NEXT_PUBLIC_BOT_CHAIN_NAME` (label UI, bebas mis. "BOT Chain Testnet"), `NEXT_PUBLIC_BOT_CHAIN_EXPLORER=https://scan.bohr.life`
+- Kembalikan `.env.example` ke **placeholder** (tanpa secret asli). Secret asli hanya di `.env.local`.
+- Verifikasi nilai chain dari sumber resmi BOT Chain, jangan percaya angka lama: testnet = **968** (`rpc.bohr.life`, explorer `scan.bohr.life`, faucet `faucet.botchain.ai/basic`); mainnet = **677** (`rpc.botchain.ai`, explorer `scan.botchain.ai`) — dipakai nanti saat pindah mainnet.
+- Catat: signing evaluasi (`SIGNER_PRIVATE_KEY`) belum dipakai sampai flow mint SBT dibangun; tidak menghalangi fitur pembayaran ini.
 
-### Tahap 2 — Countdown real-time HH:MM:SS (Item 2)
-- Ubah interval dan format di `CooldownState`; sekalian hapus/sederhanakan tombol "Cek lagi" bila sudah tidak diperlukan.
+### Tahap 1 — Sambungkan frontend ke BOT Chain testnet
+- Daftarkan BOT Chain testnet sebagai custom chain di konfigurasi wagmi (id 968, RPC, native currency "BOT", explorer `scan.bohr.life`), menggantikan Sepolia di `Web3Provider.tsx`.
+- Buat satu modul kontrak kecil (mis. `src/lib/contract.ts`) yang membaca `NEXT_PUBLIC_CONTRACT_ADDRESS` + ABI `ProofOfSkillSBT` dari hasil compile (ekspor ABI ke modul, jangan copy-paste manual yang bisa basi).
+- Tambahkan penanganan switch/add network: jika wallet user di chain lain, arahkan pindah ke BOT Chain testnet dengan pesan jelas; jangan biarkan transaksi gagal misterius. Indikator chain di navbar harus menampilkan BOT Chain.
 
-### Tahap 3 — Wallet fix (Item 4)
-- Selaraskan wagmi/RainbowKit, rapikan konfigurasi SSR, matikan auto-reconnect, lalu uji siklus connect/reload/disconnect dengan wallet sungguhan. Kerjakan sebelum migrasi teks agar tidak ada rework di layar yang sama.
+### Tahap 2 — Alur pembayaran di halaman assessment
+- Ubah alur jadi: klik **Start assessment** → wallet mengirim `startAssessment(skillId)` dengan `value` = 1 BOT → tunggu konfirmasi → **baru** soal di-generate.
+- Label biaya jelas pada tombol/CTA (mis. "Start assessment — 1 BOT"), Bahasa Inggris (issue #15 menetapkan semua teks user-facing EN).
+- Tangani semua keadaan dengan pesan manusiawi (EN): pending, user menolak di wallet, saldo kurang, network salah, cooldown on-chain aktif, sudah bersertifikat, transaksi gagal. Jangan biarkan user terjebak spinner.
+- Sertakan link explorer (`scan.bohr.life`) untuk tx yang dikirim.
+- Ingatkan di pesan "saldo kurang": user butuh saldo native untuk **gas** selain 1 BOT untuk fee.
 
-### Tahap 4 — Migrasi seluruh teks ke Bahasa Inggris (Item 3)
-- Terjemahkan semua string user-facing sesuai inventaris; grep ulang untuk memastikan bersih. Kerjakan setelah Tahap 1–3 supaya pesan cooldown/wallet yang baru langsung ditulis dalam Bahasa Inggris.
+### Tahap 3 — Verifikasi pembayaran di server (inti keamanan, jangan dilewati)
+- Sebelum `/api/assessment/generate` membuat soal, server memastikan wallet ini benar-benar sudah membayar untuk attempt ini.
+- Rancang tahan-forgery & tahan-replay: frontend mengirim **transaction hash**, server memverifikasinya ke chain (alamat tujuan = kontrak, pengirim = wallet pemohon, `value` = 1 BOT, fungsi = `startAssessment`, status sukses), lalu **mencatat hash yang sudah dipakai** agar satu pembayaran tidak bisa dipakai ambil soal berulang kali.
+- Tolak dengan status HTTP jelas bila verifikasi gagal. Semua keputusan di server; jangan percaya klaim client.
+- Tulis batasan pendekatan di komentar kode (ketergantungan RPC, penguatan untuk produksi, state in-memory hilang saat restart).
 
-### Tahap 5 — Spacing tagline hero (Item 5)
-- Sesuaikan spacing, cek visual desktop & mobile.
+### Tahap 4 — Satukan sumber kebenaran cooldown
+- Jadikan **kontrak** sumber kebenaran cooldown (on-chain, per wallet+skill, tahan restart); persempit/hilangkan peran store server yang memblokir lintas track.
+- Pastikan layar cooldown yang ada (countdown HH:MM:SS dari #15) tetap berfungsi, mengambil sisa waktu dari sumber yang benar.
+- Jangan sampai ada dua penolakan berbeda (on-chain vs server) dengan pesan membingungkan.
 
-### Tahap 6 — Verifikasi keseluruhan
-- `npm run dev`, uji manual end-to-end:
-  - Trigger cooldown (generate sekali), klik retry beberapa kali → timer terus menurun, tidak pernah reset ke 24 jam.
-  - Countdown tampil HH:MM:SS dan berdetak tiap detik.
-  - Tidak ada satu pun teks Bahasa Indonesia di UI (termasuk pesan error yang muncul).
-  - Fresh load: wallet TIDAK auto-connect; connect manual berjalan; disconnect berfungsi; reload setelah disconnect tetap terputus.
-  - Tagline hero punya jarak yang wajar dari judul di mobile & desktop.
+### Tahap 5 — Test & verifikasi
+- Test kontrak minimal untuk `startAssessment`: fee benar diterima; fee salah ditolak; cooldown ditolak; sudah bersertifikat ditolak. Folder `test/` belum ada — buat (`chai` sudah ada di devDependencies).
+- Uji end-to-end manual di **testnet** dengan wallet sungguhan yang sudah diisi tBOT dari faucet (`faucet.botchain.ai/basic`):
+  - Saldo cukup → bayar 1 BOT → tx sukses → soal muncul → bisa dikerjakan sampai submit/evaluasi.
+  - Cek event `AssessmentStarted` tercatat di `scan.bohr.life`.
+  - Saldo kurang → pesan jelas, soal tidak muncul.
+  - Tolak tx di wallet → UI pulih, tidak terkunci.
+  - Panggil API langsung tanpa bayar / pakai ulang txHash yang sama → **ditolak server**.
+  - Attempt kedua < 24 jam → ditolak dengan sisa waktu benar.
 - `npm run lint` dan `npm run build` lolos tanpa error baru.
 
 ---
 
 ## Kriteria Selesai (Definition of Done)
 
-- [ ] Retry/"Cek lagi" pada layar cooldown tidak lagi me-reset waktu; sisa waktu hanya berkurang.
-- [ ] Countdown tampil real-time format jam:menit:detik.
-- [ ] Seluruh teks yang terlihat user berbahasa Inggris (frontend + pesan error API + pesan validasi).
-- [ ] Wallet tidak auto-connect saat aplikasi dibuka; tombol disconnect berfungsi dan statusnya bertahan setelah reload.
-- [ ] Tagline "The First On-Chain Assessment Platform" berjarak wajar dari judul hero, rapi di mobile & desktop.
-- [ ] Alur assessment normal (generate → kerjakan → submit → evaluasi) tidak regress.
-- [ ] `npm run lint` dan `npm run build` lolos.
+- [ ] Nilai kontrak/chain berada di `.env.local` (bukan `.env.example`) dan benar-benar terbaca aplikasi; `.env.example` kembali ke placeholder tanpa secret.
+- [ ] Frontend tersambung ke BOT Chain **testnet** (968) dengan penanganan switch network yang jelas; alamat kontrak `0x9EBe…585B` dipakai.
+- [ ] User harus membayar 1 BOT (native `msg.value`) dan tx terkonfirmasi sebelum soal bisa diakses.
+- [ ] Server menolak permintaan soal tanpa pembayaran valid — termasuk pemanggilan API langsung dan pemakaian ulang txHash yang sama.
+- [ ] Cooldown satu sumber kebenaran (kontrak); tidak ada penolakan ganda yang membingungkan.
+- [ ] Semua keadaan gagal punya pesan EN yang jelas (saldo kurang, ditolak user, cooldown, network salah).
+- [ ] Ada test kontrak untuk logika pembayaran; `lint` & `build` lolos.
 
 ---
 
 ## Catatan untuk Implementer
 
-- Jangan menambah dependency baru; untuk wallet justru **menyelaraskan versi yang sudah ada** (wagmi 2.x sesuai peer requirement RainbowKit 2.2.11).
-- Semua enforcement (cooldown, kepemilikan sesi) tetap di sisi server — jangan memindahkan logika pembatasan ke client.
-- Perubahan diharapkan terfokus pada: `assessment/[skillId]/page.tsx`, `api/assessment/generate|evaluate/route.ts`, `lib/api.ts` (bila kontrak 429 diubah di sana), `lib/schemas.ts` dkk. untuk teks, `providers/Web3Provider.tsx` + `package.json` untuk wallet, dan `page.tsx`/`black-hole-vortex-animation.tsx` untuk spacing hero.
-- Saat mengubah versi wagmi, cek semua pemakaiannya (`useAccount`, `ConnectButton`, dll.) masih kompatibel; jalankan build penuh, jangan hanya dev.
-- Kerjakan bertahap per Tahap dan verifikasi tiap tahap sebelum lanjut.
+- **Jangan deploy ulang / mengubah kontrak** — sudah live & terverifikasi di testnet. Kalau merasa perlu ubah kontrak, jelaskan alasannya dulu.
+- **Jangan menambah dependency baru** — viem/ethers, wagmi, RainbowKit, hardhat, chai sudah terpasang.
+- Pembayaran = **native value**, bukan ERC-20. Jangan membangun alur approve/transfer ERC-20.
+- **Jangan pernah** men-commit private key / menaruhnya di `NEXT_PUBLIC_*`. Secret hanya di `.env.local`.
+- Saat ini `owner()` dan `aiSignerAddress()` adalah **wallet yang sama** (`0xd1096…Ba294`) — bisa begitu karena kontrak memakai `Ownable(msg.sender)` dan deployer juga dipakai sebagai signer. Ini wajar untuk testnet. Untuk **mainnet** pertimbangkan memisahkan: signer adalah "hot key" backend yang rawan; jika jebol sekaligus owner, penyerang ikut memegang kendali admin + `withdrawFees()`. Bisa dipisah tanpa redeploy: `setAiSignerAddress(newSigner)` dan `transferOwnership(newOwner)`.
+- Untuk testnet sekarang: chainId **968**, RPC `https://rpc.bohr.life`, explorer `https://scan.bohr.life`, faucet `https://faucet.botchain.ai/basic`. (Mainnet nanti: 677 / `rpc.botchain.ai` / `scan.botchain.ai`.)
+- `hardhat.config.ts` belum punya `networks` dan belum ada `scripts/`. Hanya diperlukan bila butuh redeploy/interaksi via hardhat; fitur ini utamanya wiring frontend+server ke kontrak live, jadi deployment bukan prasyarat.
+- Store in-memory server hilang saat restart & tidak shared antar instance — kalau dipakai untuk state pembayaran, itu celah; catat batasannya, jangan diam-diam.
+- Kalau ada langkah yang gagal (mis. RPC/faucet tidak bisa dipakai), **jangan memalsukan** keberhasilan atau mengarang txHash/alamat. Laporkan hambatannya jujur dan berhenti di tahap itu.
+- Kerjakan bertahap per Tahap, verifikasi tiap tahap sebelum lanjut. **Tahap 0 dan Tahap 3** adalah yang paling menentukan keberhasilan & keamanan — jangan dilewati demi tampilan.
