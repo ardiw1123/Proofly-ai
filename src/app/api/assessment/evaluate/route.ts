@@ -97,10 +97,8 @@ export async function POST(request: Request) {
   const passed = evaluation.score >= PASSING_SCORE;
 
   // The 24h clock started when this case was generated, so we read it back from
-  // the shared attempt store rather than recomputing a deadline here. Keeping a
-  // single source of truth prevents the generate and evaluate cooldowns from
-  // disagreeing.
-  const cooldown = getAttemptCooldown(walletAddress);
+  // the attempt store for this specific skill track rather than recomputing a deadline here.
+  const cooldown = getAttemptCooldown(walletAddress, skillId);
 
   const result: EvaluationResult = {
     passed,

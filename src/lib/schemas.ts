@@ -13,10 +13,16 @@ export const walletAddressSchema = z
   .min(1, 'walletAddress is required')
   .max(128, 'walletAddress is too long');
 
+export const txHashSchema = z
+  .string()
+  .trim()
+  .regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash');
+
 /** POST /api/assessment/generate */
 export const generateRequestSchema = z.object({
   walletAddress: walletAddressSchema,
   skillId: skillIdSchema,
+  txHash: txHashSchema,
 });
 
 export type GenerateRequestBody = z.infer<typeof generateRequestSchema>;
