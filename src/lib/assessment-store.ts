@@ -33,20 +33,51 @@ const globalForSessions = globalThis as typeof globalThis & {
 const sessions: Map<string, StoredAssessmentSession> = (globalForSessions.__posAssessmentSessions ??=
   new Map<string, StoredAssessmentSession>());
 
+export interface StoredUsedTx {
+  txHash: string;
+  walletAddress: string;
+  skillId: number;
+  usedAt: number;
+}
+
+const globalForUsedTx = globalThis as typeof globalThis & {
+  __posUsedTxHashes?: Map<string, StoredUsedTx>;
+};
+
+const usedTxHashes: Map<string, StoredUsedTx> = (globalForUsedTx.__posUsedTxHashes ??=
+  new Map<string, StoredUsedTx>());
+
+export function isTxHashUsed(txHash: string): boolean {
+  return usedTxHashes.has(txHash.trim().toLowerCase());
+}
+
+export function recordUsedTxHash(
+  txHash: string,
+  details: { walletAddress: string; skillId: number; timestamp?: number },
+): void {
+  const normalized = txHash.trim().toLowerCase();
+  usedTxHashes.set(normalized, {
+    txHash: normalized,
+    walletAddress: details.walletAddress.trim().toLowerCase(),
+    skillId: details.skillId,
+    usedAt: details.timestamp ?? Date.now(),
+  });
+}
+
 interface StoredAttempt {
   /** Normalised (lowercased) wallet address. */
   walletAddress: string;
+  skillId: number;
   startedAt: number;
   expiresAt: number;
 }
 
 /**
- * Per-wallet attempt log backing the 24h limit. Kept separate from `sessions`
- * because sessions expire after 2 hours while the cooldown must outlive them.
+ * Per-(wallet, skillId) attempt log backing the 24h limit cache.
+ * Note: The on-chain contract (ProofOfSkillSBT) is the primary source of truth.
  *
- * MVP storage: another process-local Map cached on globalThis. Like `sessions`,
- * it is wiped on server restart and is not shared across instances — a real
- * deployment needs Redis/KV (or an on-chain read) for a durable limit.
+ * MVP storage: process-local Map cached on globalThis. Like `sessions`,
+ * it is wiped on server restart and is not shared across instances.
  */
 const globalForAttempts = globalThis as typeof globalThis & {
   __posAssessmentAttempts?: Map<string, StoredAttempt>;
@@ -59,6 +90,10 @@ function normalizeWallet(walletAddress: string): string {
   return walletAddress.trim().toLowerCase();
 }
 
+function makeAttemptKey(walletAddress: string, skillId: number): string {
+  return `${normalizeWallet(walletAddress)}:${skillId}`;
+}
+
 export interface AttemptCooldown {
   /** True while the wallet is still locked out of generating a new case. */
   active: boolean;
@@ -68,9 +103,9 @@ export interface AttemptCooldown {
   cooldownUntil: number;
 }
 
-/** Reads the current cooldown for a wallet without changing it. */
-export function getAttemptCooldown(walletAddress: string): AttemptCooldown {
-  const key = normalizeWallet(walletAddress);
+/** Reads the current cooldown for a wallet and specific skill track without changing it. */
+export function getAttemptCooldown(walletAddress: string, skillId: number): AttemptCooldown {
+  const key = makeAttemptKey(walletAddress, skillId);
   const record = attempts.get(key);
   const now = Date.now();
 
@@ -91,21 +126,21 @@ export function getAttemptCooldown(walletAddress: string): AttemptCooldown {
 }
 
 /**
- * Starts (or restarts) the 24h cooldown for a wallet. Called only after a case
- * study was generated successfully, so a failed AI call does not burn the
- * candidate's daily attempt.
+ * Starts (or restarts) the 24h cooldown for a wallet and skill track. Called only after a case
+ * study was generated successfully.
  */
-export function recordAttempt(walletAddress: string): AttemptCooldown {
+export function recordAttempt(walletAddress: string, skillId: number): AttemptCooldown {
   pruneExpiredAttempts();
 
   const now = Date.now();
   const record: StoredAttempt = {
     walletAddress: normalizeWallet(walletAddress),
+    skillId,
     startedAt: now,
     expiresAt: now + ATTEMPT_COOLDOWN_MS,
   };
 
-  attempts.set(record.walletAddress, record);
+  attempts.set(makeAttemptKey(walletAddress, skillId), record);
 
   return {
     active: true,

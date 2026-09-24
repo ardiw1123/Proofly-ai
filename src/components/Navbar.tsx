@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Award } from 'lucide-react';
 import { WalletControl } from '@/components/WalletControl';
+import { botChain } from '@/lib/contract';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Assessments' },
@@ -26,7 +27,7 @@ export function Navbar() {
               <span className="block text-xl font-bold tracking-tighter text-white">
                 ProofOfSkill
               </span>
-              <span className="block text-xs text-zinc-500">BOT Chain</span>
+              <span className="block text-xs text-zinc-500">{botChain.name}</span>
             </span>
           </span>
         </Link>

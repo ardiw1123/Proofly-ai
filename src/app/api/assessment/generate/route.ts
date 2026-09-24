@@ -6,8 +6,9 @@ import {
   generateJsonSchema,
   generatedCaseValidator,
 } from '@/lib/ai-schemas';
-import { SESSION_TTL_MS, createSessionId, getAttemptCooldown, recordAttempt, saveSession } from '@/lib/assessment-store';
+import { SESSION_TTL_MS, createSessionId, recordAttempt, saveSession } from '@/lib/assessment-store';
 import { TEMPERATURE_GENERATE, isAiConfigured } from '@/lib/openai';
+import { verifyAssessmentPayment } from '@/lib/payment-verification';
 import {
   buildGenerateSystemPrompt,
   buildGenerateUserPrompt,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/prompts';
 import { generateRequestSchema } from '@/lib/schemas';
 import type { AssessmentCase, AssessmentProblem } from '@/types';
+import type { Address, Hash } from 'viem';
 
 export const runtime = 'nodejs';
 
@@ -24,6 +26,10 @@ export const runtime = 'nodejs';
  * Generates a brand new business case study with exactly three progressive
  * problems for the requested skill track, and remembers it under a sessionId
  * so the evaluate endpoint can score the candidate against the real questions.
+ *
+ * Security & Anti-Replay:
+ * Requires a valid on-chain payment txHash calling `startAssessment(skillId)` with 1 BOT.
+ * Replaying previously used transaction hashes or submitting invalid/fake hashes is rejected.
  */
 export async function POST(request: Request) {
   const body = await readJsonBody(request);
@@ -33,23 +39,19 @@ export async function POST(request: Request) {
     return jsonError('Invalid input.', 400, parsed.error.flatten());
   }
 
-  const { walletAddress, skillId } = parsed.data;
+  const { walletAddress, skillId, txHash } = parsed.data;
 
-  // Enforced server-side so the 24h limit cannot be bypassed from the client.
-  // The clock starts when the case study is generated (see recordAttempt).
-  const cooldown = getAttemptCooldown(walletAddress);
+  // Enforce on-chain payment verification server-side before generating any case study.
+  const verification = await verifyAssessmentPayment({
+    txHash: txHash as Hash,
+    walletAddress: walletAddress as Address,
+    skillId,
+  });
 
-  if (cooldown.active) {
-    const remainingMinutes = Math.ceil(cooldown.remainingMs / 60_000);
-    const hours = Math.floor(remainingMinutes / 60);
-    const minutes = remainingMinutes % 60;
-    const remainingLabel = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-
+  if (!verification.valid) {
     return jsonError(
-      `You have already completed an assessment. Please return in ${remainingLabel}.`,
-      429,
-      { cooldownUntil: cooldown.cooldownUntil, remainingMs: cooldown.remainingMs },
-      { 'Retry-After': String(Math.ceil(cooldown.remainingMs / 1000)) },
+      verification.error ?? 'Payment verification failed.',
+      verification.statusCode ?? 400,
     );
   }
 
@@ -106,8 +108,8 @@ export async function POST(request: Request) {
     consumed: false,
   });
 
-  // Start the 24h limit only once a case study actually exists for the wallet.
-  recordAttempt(walletAddress);
+  // Track the attempt timestamp for this specific (wallet, skillId)
+  recordAttempt(walletAddress, skillId);
 
   return jsonOk(assessment);
 }
