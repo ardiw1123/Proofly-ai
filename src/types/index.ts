@@ -1,4 +1,4 @@
-// Shared TypeScript types for the ProofOfSkill application
+// Shared TypeScript types for the Proofly application
 
 export interface SkillTrack {
   id: number; // 1: SQL, 2: Python, 3: Solidity

@@ -1,7 +1,8 @@
+import Image from 'next/image';
 import { ExternalLink } from 'lucide-react';
 
 const EXPLORER_URL =
-  process.env.NEXT_PUBLIC_BOT_CHAIN_EXPLORER ?? 'https://explorer.botchain.ai';
+  process.env.NEXT_PUBLIC_BOT_CHAIN_EXPLORER ?? 'https://scan.botchain.ai';
 
 export function Footer() {
   return (
@@ -13,10 +14,16 @@ export function Footer() {
           href={EXPLORER_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-full border border-zinc-800 px-4 py-1.5 transition-colors hover:border-blue-500/50 hover:text-blue-400"
+          className="inline-flex items-center gap-2.5 rounded-full border border-zinc-800 px-4 py-1.5 transition-colors hover:border-teal-500/50 hover:text-teal-400"
         >
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-[9px] font-bold text-white">
-            B
+          <span className="relative flex h-5 w-5 items-center justify-center overflow-hidden">
+            <Image
+              src="/bot-chain-logo.png"
+              alt="BOT Chain Logo"
+              width={20}
+              height={20}
+              className="h-full w-full object-contain"
+            />
           </span>
           BOT Chain
           <ExternalLink className="h-3.5 w-3.5" />

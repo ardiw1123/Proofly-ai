@@ -6,7 +6,7 @@ import { BOT_CHAIN_ID, CONTRACT_ADDRESS, ASSESSMENT_FEE_WEI, COOLDOWN_PERIOD_SEC
 
 describe('Server-Side Assessment Payment & Store Logic', () => {
   it('should enforce contract constants and chain configuration', () => {
-    expect(BOT_CHAIN_ID).to.equal(968);
+    expect(BOT_CHAIN_ID).to.equal(677);
     expect(CONTRACT_ADDRESS.toLowerCase()).to.equal('0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B'.toLowerCase());
     expect(ASSESSMENT_FEE_WEI.toString()).to.equal('1000000000000000000');
     expect(COOLDOWN_PERIOD_SECONDS).to.equal(86400);
