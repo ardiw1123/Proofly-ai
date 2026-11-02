@@ -2,7 +2,7 @@ import Image from 'next/image';
 import { ExternalLink } from 'lucide-react';
 
 const EXPLORER_URL =
-  process.env.NEXT_PUBLIC_BOT_CHAIN_EXPLORER ?? 'https://scan.botchain.ai/address/0x9EBe0474c229878dfb64D3D0AE628D6B01B5585B';
+  process.env.NEXT_PUBLIC_BOT_CHAIN_EXPLORER ?? 'https://www.botchain.ai/en/';
 
 export function Footer() {
   return (
